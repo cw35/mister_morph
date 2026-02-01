@@ -28,6 +28,8 @@ Run with `--interactive`, then press Ctrl-C during the loop to pause and type ex
 
 By default, `run` uses `skills.mode=smart` so the agent can decide which skills to load (no need to mention `$SkillName`).
 
+Docs: `docs/skills.md`
+
 ```bash
 ./mister_morph skills list
 ./mister_morph skills show skill-creator
@@ -46,6 +48,8 @@ By default, `run` uses `skills.mode=smart` so the agent can decide which skills 
 ## Daemon Mode (Serve + Submit)
 
 Run a local HTTP daemon that accepts tasks sequentially (one-by-one), so you don’t need to restart the process for each task.
+
+Security hardening (recommended for daemon mode): `docs/security.md`
 
 Start the daemon:
 

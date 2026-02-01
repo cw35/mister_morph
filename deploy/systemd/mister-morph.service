@@ -2,37 +2,44 @@
 Description=mister_morph (agent daemon, sandboxed)
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=10
+StartLimitBurst=10
 
 [Service]
 Type=simple
 
-# Install your binary somewhere stable (example: /usr/local/bin/mister_morph).
-# If you use a config file, add: --config /etc/mister-morph/config.yaml
-ExecStart=/usr/local/bin/mister_morph --log-level info serve --server-bind 127.0.0.1 --server-port 8787
+# Example deployment layout:
+# - Binary:  /opt/morph/mister_morph
+# - Config:  /opt/morph/config.yaml
+# - Skills:  /opt/morph/skills (set skills.dirs accordingly in config)
+# Or ExecStart=/opt/morph/mister_morph --config /opt/morph/config.yaml --log-level info telegram
+ExecStart=/opt/morph/mister_morph --config /opt/morph/config.yaml --log-level info serve --server-bind 127.0.0.1 --server-port 8787
 
 # Secrets/config via environment (recommended).
 # Expected:
 # - MISTER_MORPH_API_KEY
 # - MISTER_MORPH_SERVER_AUTH_TOKEN
-EnvironmentFile=-/etc/mister-morph/mister-morph.env
+EnvironmentFile=-/opt/morph/morph.env
 
 Restart=on-failure
 RestartSec=2s
 
+# Run as a dedicated user, so you can manage ownership/ACLs explicitly.
+User=morph
+Group=morph
+
 # systemd-managed writable dirs (kept minimal).
-DynamicUser=yes
-StateDirectory=mister-morph
+# - StateDirectory: persistent data (sqlite DB)
+# - CacheDirectory: ephemeral cache (file_cache_dir / telegram downloads / write_file)
+StateDirectory=morph
 StateDirectoryMode=0700
-CacheDirectory=mister-morph
+CacheDirectory=morph
 CacheDirectoryMode=0700
-LogsDirectory=mister-morph
-LogsDirectoryMode=0700
 
 # Keep all persistent writes inside StateDirectory, and all temp/file-tool writes inside CacheDirectory.
-WorkingDirectory=/var/lib/mister-morph
-Environment=HOME=/var/lib/mister-morph
-Environment=MISTER_MORPH_DB_DSN=/var/lib/mister-morph/mister_morph.sqlite
-Environment=MISTER_MORPH_FILE_CACHE_DIR=/var/cache/mister-morph
+WorkingDirectory=/var/lib/morph
+Environment=MISTER_MORPH_DB_DSN=/var/lib/morph/mister_morph.sqlite
+Environment=MISTER_MORPH_FILE_CACHE_DIR=/var/cache/morph
 
 # If you want to allow the agent to read a specific project directory, prefer a read-only bind mount:
 # BindReadOnlyPaths=/home/you/projects:/workspace

@@ -1,0 +1,91 @@
+---
+title: Security
+---
+
+# Security
+
+This document focuses on **process isolation** and **filesystem sandboxing** when running `mister_morph` as a long-lived daemon (for example, via `mister_morph serve`).
+
+## Why a systemd sandbox
+
+`mister_morph` is an agent that can:
+
+- make outbound HTTP(S) calls (LLM provider, web_search, url_fetch, Telegram)
+- read local files (read_file tool, skill discovery)
+- optionally execute shell commands (bash tool, if enabled)
+
+That makes it a good candidate for a **deny-by-default** runtime profile:
+
+- keep the root filesystem read-only
+- allow writes only to explicitly declared directories
+- reduce kernel / device / namespace surface
+- run without elevated privileges
+
+systemd provides a first-class “service hardening” feature set for this. Unlike `chroot`, it does not require building a separate root filesystem; it applies restrictions directly to the unit.
+
+## Recommended deployment layout
+
+The recommended unit assumes:
+
+- Binary: `/opt/morph/mister_morph`
+- Config: `/opt/morph/config.yaml`
+- Skills: `/opt/morph/skills` (configure `skills.dirs` to point here)
+- Persistent state (sqlite DB): `/var/lib/morph/`
+- Ephemeral cache (file_cache_dir, Telegram downloads, write_file tool output): `/var/cache/morph/`
+- Secrets: `/opt/morph/morph.env` (mode `0600`, owned by root or `morph`)
+
+See the example unit file: `deploy/systemd/mister-morph.service`.
+
+## How the filesystem sandbox works (in the unit)
+
+### Read-only system files
+
+- `ProtectSystem=strict` makes the system directories effectively read-only for the service (with a small set of unavoidable exceptions handled by systemd).
+- This prevents accidental or malicious writes to places like `/etc`, `/usr`, `/bin`, etc.
+
+### No access to home directories
+
+- `ProtectHome=true` hides `/home`, `/root`, and `/run/user` from the service.
+- This is a strong default: it prevents the agent from reading shell history, SSH keys, dotfiles, and other sensitive user data.
+
+If you need access to specific content, prefer moving it under `/opt/morph/...` or using explicit bind mounts (see below) rather than opening up all of `/home`.
+
+### Explicit writable directories only
+
+systemd can create and manage service-owned directories under `/var/lib`, `/var/cache`, and `/var/log`:
+
+- `StateDirectory=morph` → writable `/var/lib/morph` (persistent state)
+- `CacheDirectory=morph` → writable `/var/cache/morph` (ephemeral cache)
+
+For `mister_morph`, this split is recommended because sqlite DB files are not “cache” and should not be treated as disposable.
+
+The example unit additionally pins the agent’s paths via env vars:
+
+- `MISTER_MORPH_DB_DSN=/var/lib/morph/mister_morph.sqlite`
+- `MISTER_MORPH_FILE_CACHE_DIR=/var/cache/morph`
+
+### Optional bind mounts (fine-grained allowlist)
+
+If you want the agent to read a specific project directory, allowlist it explicitly:
+
+- Read-only: `BindReadOnlyPaths=/some/dir:/workspace/dir`
+- Read-write: `BindPaths=/some/dir:/workspace/dir`
+
+Prefer bind mounts over weakening `ProtectSystem`/`ProtectHome`.
+
+## Other hardening knobs used
+
+The example unit also enables common isolation options:
+
+- `NoNewPrivileges=true`: prevents gaining extra privileges (e.g. via setuid binaries).
+- `PrivateTmp=true`: private `/tmp` for the service.
+- `PrivateDevices=true` + `DevicePolicy=closed`: blocks access to device nodes.
+- `ProtectProc=invisible` + `ProcSubset=pid`: reduce process info leakage.
+- `RestrictNamespaces=true`: reduces attack surface from namespace creation.
+- `MemoryDenyWriteExecute=true`: blocks W+X memory mappings (mitigates some exploit classes).
+- `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`: allow only typical networking families (needed for outbound HTTP(S) and local sockets).
+
+## Notes and limitations
+
+- systemd hardening is not a perfect sandbox. If you need stronger isolation, consider running in a container/VM.
+- If you enable the `bash` tool, treat it as high risk. Prefer keeping it disabled in daemon mode, or requiring confirmations and using a strict allowlist of read-only bind mounts.
