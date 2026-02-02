@@ -18,8 +18,8 @@ Unified Agent CLI + reusable Go agent core.
 What makes this project worth looking at:
 
 - Reusable Go core: run the agent as a CLI, or embed it as a library/subprocess in other apps.
-- Serious secure defaults: secrets stay out of prompts/tool params/logs via profile-based auth and redaction (see `docs/security.md`).
-- Practical Skills system: discover + inject `SKILL.md`, with smart selection and optional auth profile declarations for safe API use (see `docs/skills.md`).
+- Serious secure defaults: secrets stay out of prompts/tool params/logs via profile-based auth and redaction (see [docs/security.md](docs/security.md)).
+- Practical Skills system: discover + inject `SKILL.md`, with smart selection and optional auth profile declarations for safe API use (see [docs/skills.md](docs/skills.md)).
 
 ## Quickstart
 
@@ -29,10 +29,10 @@ What makes this project worth looking at:
 go build -o ./bin/mister_morph ./cmd/mister_morph
 ```
 
-### Run (OpenAI-compatible)
+### Run 
 
 ```bash
-./bin/mister_morph run --task "Summarize this repo structure" --provider openai --model gpt-4o-mini --api-key "$OPENAI_API_KEY"
+./bin/mister_morph run --task "Summarize this repo structure" --provider openai --model gpt-5 --api-key "$OPENAI_API_KEY" --endpoint "https://api.openai.com/v1"
 ```
 
 ### Human-in-the-loop (interrupt + inject)
@@ -40,17 +40,17 @@ go build -o ./bin/mister_morph ./cmd/mister_morph
 Run with `--interactive`, then press Ctrl-C during the loop to pause and type extra context (end with an empty line).
 
 ```bash
-./bin/mister_morph run --interactive --task "..." --provider openai --model gpt-4o-mini --api-key "$OPENAI_API_KEY"
+./bin/mister_morph run --interactive --task "..." --provider openai --model gpt-4o-mini --api-key "$OPENAI_API_KEY" --endpoint "https://api.openai.com/v1"
 ```
 
-## Embedding
+## Embedding to other projects
 
 Two common integration options:
 
 - As a Go library: see `demo/embed-go/`.
 - As a subprocess CLI: see `demo/embed-cli/`.
 
-## Skills (SKILL.md)
+## Skills
 
 `mister_morph` can discover skills under `~/.morph/skills`, `~/.claude/skills`, and `~/.codex/skills` (recursively), and inject selected `SKILL.md` content into the system prompt.
 
@@ -111,9 +111,113 @@ Notes:
 
 ## Configuration
 
-- Flags: `--provider`, `--model`, `--api-key`, `--endpoint`, `--llm-request-timeout`, `--plan-mode`, `--max-steps`, `--parse-retries`, `--timeout`, `--trace`, `--log-level`, `--log-format`, `--server-port`, `--server-auth-token`
-- Env vars: `MISTER_MORPH_LLM_PROVIDER`, `MISTER_MORPH_LLM_MODEL`, `MISTER_MORPH_LLM_API_KEY`, `MISTER_MORPH_LLM_ENDPOINT` (nested keys also work, e.g. `MISTER_MORPH_TOOLS_BASH_ENABLED=true`)
-- Optional config file: `--config path/to/config` (supports `.yaml/.yml/.json/.toml/.ini`)
+`mister_morph` uses Viper, so you can configure it via flags, env vars, or a config file.
+
+- Config file: `--config /path/to/config.yaml` (supports `.yaml/.yml/.json/.toml/.ini`)
+- Env var prefix: `MISTER_MORPH_`
+- Nested keys: replace `.` and `-` with `_` (e.g. `tools.bash.enabled` → `MISTER_MORPH_TOOLS_BASH_ENABLED=true`)
+
+### CLI flags
+
+**Global (all commands)**
+- `--config`
+- `--log-level`
+- `--log-format`
+- `--log-add-source`
+- `--log-include-thoughts`
+- `--log-include-tool-params`
+- `--log-include-skill-contents`
+- `--log-max-thought-chars`
+- `--log-max-json-bytes`
+- `--log-max-string-value-chars`
+- `--log-max-skill-content-chars`
+- `--log-redact-key` (repeatable)
+- `--trace`
+
+**run**
+- `--task`
+- `--provider`
+- `--endpoint`
+- `--model`
+- `--api-key`
+- `--llm-request-timeout`
+- `--interactive`
+- `--skills-dir` (repeatable)
+- `--skill` (repeatable)
+- `--skills-auto`
+- `--skills-mode` (`off|explicit|smart`)
+- `--skills-max-load`
+- `--skills-preview-bytes`
+- `--skills-catalog-limit`
+- `--skills-select-timeout`
+- `--max-steps`
+- `--parse-retries`
+- `--max-token-budget`
+- `--plan-mode` (`off|auto|always`)
+- `--timeout`
+
+**serve**
+- `--server-bind`
+- `--server-port`
+- `--server-auth-token`
+- `--server-max-queue`
+
+**submit**
+- `--task`
+- `--server-url`
+- `--auth-token`
+- `--model`
+- `--submit-timeout`
+- `--wait`
+- `--poll-interval`
+
+**telegram**
+- `--telegram-bot-token`
+- `--telegram-allowed-chat-id` (repeatable)
+- `--telegram-alias` (repeatable)
+- `--telegram-group-trigger-mode` (`strict|smart|contains`)
+- `--telegram-alias-prefix-max-chars`
+- `--telegram-addressing-llm-enabled`
+- `--telegram-addressing-llm-mode` (`borderline|always`)
+- `--telegram-addressing-llm-model`
+- `--telegram-addressing-llm-timeout`
+- `--telegram-addressing-llm-min-confidence`
+- `--telegram-poll-timeout`
+- `--telegram-task-timeout`
+- `--telegram-max-concurrency`
+- `--telegram-history-max-messages`
+- `--file-cache-dir`
+
+**skills**
+- `skills list --skills-dir` (repeatable)
+- `skills show --skills-dir` (repeatable)
+- `skills install-builtin --dest --dry-run --clean --skip-existing --timeout --max-bytes --yes`
+
+### Environment variables
+
+Common env vars (these map to config keys):
+
+- `MISTER_MORPH_CONFIG`
+- `MISTER_MORPH_LLM_PROVIDER`
+- `MISTER_MORPH_LLM_ENDPOINT`
+- `MISTER_MORPH_LLM_MODEL`
+- `MISTER_MORPH_LLM_API_KEY`
+- `MISTER_MORPH_LLM_REQUEST_TIMEOUT`
+- `MISTER_MORPH_LOGGING_LEVEL`
+- `MISTER_MORPH_LOGGING_FORMAT`
+- `MISTER_MORPH_SERVER_AUTH_TOKEN`
+- `MISTER_MORPH_TELEGRAM_BOT_TOKEN`
+- `MISTER_MORPH_DB_DSN`
+- `MISTER_MORPH_FILE_CACHE_DIR`
+
+Tool toggles and limits also map to env vars, for example:
+
+- `MISTER_MORPH_TOOLS_BASH_ENABLED`
+- `MISTER_MORPH_TOOLS_BASH_CONFIRM`
+- `MISTER_MORPH_TOOLS_URL_FETCH_ENABLED`
+- `MISTER_MORPH_TOOLS_URL_FETCH_MAX_BYTES`
+
+Secret values referenced by `auth_profiles.*.credential.secret_ref` are regular env vars too (example: `JSONBILL_API_KEY`).
 
 Key meanings (see `config.example.yaml` for the canonical list):
 - Core: `llm.provider`/`llm.endpoint`/`llm.model`/`llm.api_key` select the LLM backend and credentials.

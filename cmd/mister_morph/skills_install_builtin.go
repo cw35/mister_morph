@@ -36,14 +36,14 @@ func newSkillsInstallBuiltinCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "install [skill_md_url]",
-		Short: "Install/update skills into ~/.morph/skills (built-in, or from a remote SKILL.md URL)",
+		Short: "Install/update skills into the first configured skills.dirs (or ~/.morph/skills)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home, err := os.UserHomeDir()
 			if err != nil || strings.TrimSpace(home) == "" {
 				return fmt.Errorf("cannot resolve home dir")
 			}
-			defaultDest := filepath.Join(home, ".morph", "skills")
+			defaultDest := defaultSkillsInstallDest(home, getStringSlice("skills.dirs", "skills_dirs", "skills_dir"))
 
 			if strings.TrimSpace(dest) == "" {
 				dest = defaultDest
@@ -52,11 +52,12 @@ func newSkillsInstallBuiltinCmd() *cobra.Command {
 			if dest == "" {
 				return fmt.Errorf("invalid dest")
 			}
+			dest = resolveRelativeToHome(dest, home)
 
 			if len(args) == 1 {
 				// Remote skills are only allowed to install under the skills root directory.
 				// (Built-in install can use --dest for testing, but remote install should be constrained.)
-				if cmd.Flags().Changed("dest") && filepath.Clean(dest) != filepath.Clean(defaultDest) {
+				if cmd.Flags().Changed("dest") && canonicalPath(dest) != canonicalPath(defaultDest) {
 					return fmt.Errorf("remote skill install only supports the default destination: %s", defaultDest)
 				}
 				client, model, err := llmClientForRemoteSkillReview()
@@ -171,7 +172,7 @@ func newSkillsInstallBuiltinCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&dest, "dest", "", "Destination directory (default: ~/.morph/skills)")
+	cmd.Flags().StringVar(&dest, "dest", "", "Destination directory (default: first skills.dirs entry; fallback: ~/.morph/skills)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print operations without writing files")
 	cmd.Flags().BoolVar(&clean, "clean", false, "Remove existing skill dir before copying (destructive)")
 	cmd.Flags().BoolVar(&skipExisting, "skip-existing", false, "Skip files that already exist in destination")
@@ -180,6 +181,54 @@ func newSkillsInstallBuiltinCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompts (dangerous)")
 
 	return cmd
+}
+
+func defaultSkillsInstallDest(home string, roots []string) string {
+	home = strings.TrimSpace(home)
+	if home == "" {
+		home = "."
+	}
+	fallback := filepath.Join(home, ".morph", "skills")
+	if len(roots) == 0 {
+		return fallback
+	}
+	first := strings.TrimSpace(roots[0])
+	if first == "" {
+		return fallback
+	}
+	first = expandHome(first)
+	if strings.TrimSpace(first) == "" {
+		return fallback
+	}
+	first = resolveRelativeToHome(first, home)
+	return first
+}
+
+func resolveRelativeToHome(p string, home string) string {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return ""
+	}
+	home = strings.TrimSpace(home)
+	if home == "" {
+		return filepath.Clean(p)
+	}
+	if filepath.IsAbs(p) {
+		return filepath.Clean(p)
+	}
+	return filepath.Clean(filepath.Join(home, p))
+}
+
+func canonicalPath(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return filepath.Clean(p)
+	}
+	return filepath.Clean(abs)
 }
 
 func expandHome(p string) string {
