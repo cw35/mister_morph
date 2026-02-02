@@ -26,8 +26,10 @@ import (
 
 	"github.com/quailyquaily/mistermorph/agent"
 	"github.com/quailyquaily/mistermorph/db"
+	"github.com/quailyquaily/mistermorph/db/models"
 	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/quailyquaily/mistermorph/memory"
+	"github.com/quailyquaily/mistermorph/scheduler"
 	"github.com/quailyquaily/mistermorph/tools"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -103,6 +105,7 @@ func newTelegramCmd() *cobra.Command {
 			model := llmModelFromViper()
 			reg := registryFromViper()
 			logOpts := logOptionsFromViper()
+			sharedGuard := guardFromViper(logger)
 
 			cfg := agent.Config{
 				MaxSteps:       viper.GetInt("max_steps"),
@@ -220,6 +223,75 @@ func newTelegramCmd() *cobra.Command {
 				"addressing_llm_timeout", addressingLLMTimeout.String(),
 				"addressing_llm_min_confidence", addressingLLMMinConfidence,
 			)
+
+			// Registry used by the resident scheduler in telegram mode: include Telegram delivery tools.
+			schedulerReg := tools.NewRegistry()
+			for _, t := range reg.All() {
+				schedulerReg.Register(t)
+			}
+			// No "current chat" for scheduled runs; tasks should provide chat_id (typically from injected meta).
+			schedulerReg.Register(newTelegramSendVoiceTool(api, 0, fileCacheDir, filesMaxBytes, allowed))
+
+			if viper.GetBool("scheduler.enabled") {
+				dbCfg := dbConfigFromViper()
+				gdb, err := db.Open(cmd.Context(), dbCfg)
+				if err != nil {
+					return err
+				}
+				if dbCfg.AutoMigrate {
+					if err := db.AutoMigrate(gdb); err != nil {
+						return err
+					}
+				}
+
+				schedCfg := scheduler.DefaultConfig()
+				schedCfg.Enabled = true
+				schedCfg.Concurrency = viper.GetInt("scheduler.concurrency")
+				schedCfg.Tick = viper.GetDuration("scheduler.tick")
+				schedCfg.OnRunFinished = func(ctx context.Context, job models.CronJob, run models.CronRun, status string, errStr *string, summary *string) error {
+					if job.NotifyTelegramChatID == nil || *job.NotifyTelegramChatID == 0 {
+						return nil
+					}
+
+					var msg string
+					if status == scheduler.StatusSuccess && summary != nil && strings.TrimSpace(*summary) != "" {
+						msg = strings.TrimSpace(*summary)
+					} else {
+						details := ""
+						if errStr != nil && strings.TrimSpace(*errStr) != "" {
+							details = ": " + strings.TrimSpace(*errStr)
+						}
+						msg = fmt.Sprintf("cron job %s (%s) %s%s", strings.TrimSpace(job.Name), job.ID, status, details)
+					}
+					return api.sendMessageChunked(ctx, *job.NotifyTelegramChatID, msg)
+				}
+
+				runner := func(ctx context.Context, task string, model string, meta map[string]any) (*string, error) {
+					final, runCtx, err := runOneTask(ctx, logger, logOpts, client, schedulerReg, cfg, sharedGuard, task, model, meta)
+					if err != nil {
+						return nil, err
+					}
+					if pendingID, ok := pendingApprovalID(final); ok {
+						return nil, fmt.Errorf("approval required: %s", pendingID)
+					}
+					if final == nil || final.Output == nil || runCtx == nil {
+						return nil, nil
+					}
+					if s, ok := final.Output.(string); ok && strings.TrimSpace(s) != "" {
+						out := strings.TrimSpace(s)
+						return &out, nil
+					}
+					return nil, nil
+				}
+
+				s, err := scheduler.New(gdb, model, runner, schedCfg, logger)
+				if err != nil {
+					return err
+				}
+				if err := s.Start(cmd.Context()); err != nil {
+					return err
+				}
+			}
 
 			getOrStartWorkerLocked := func(chatID int64) *telegramChatWorker {
 				if w, ok := workers[chatID]; ok && w != nil {
@@ -729,6 +801,7 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	for _, t := range baseReg.All() {
 		reg.Register(t)
 	}
+	reg.Register(newTelegramSendVoiceTool(api, job.ChatID, fileCacheDir, filesMaxBytes, nil))
 	if filesEnabled && api != nil {
 		reg.Register(newTelegramSendFileTool(api, job.ChatID, fileCacheDir, filesMaxBytes))
 	}
@@ -747,6 +820,9 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	// backticks. Give the model a channel-specific reminder.
 	promptSpec.Rules = append(promptSpec.Rules,
 		"In your final.output string, write for Telegram Markdown (prefer MarkdownV2). Wrap identifiers/params/paths (especially anything containing '_' like `new_york`) in backticks so they render correctly. Avoid using underscores for italics; use *...* if you need emphasis.",
+	)
+	promptSpec.Rules = append(promptSpec.Rules,
+		"If you create a scheduled reminder for this chat using schedule_job: set run_once=true for one-shot reminders, and set notify_telegram_chat_id to the telegram_chat_id value from mister_morph_meta so the scheduler can deliver the result back into this chat.",
 	)
 
 	if viper.GetBool("memory.enabled") && job.FromUserID > 0 {
@@ -803,7 +879,14 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 		agent.WithSkillAuthProfiles(skillAuthProfiles, viper.GetBool("secrets.require_skill_profiles")),
 		agent.WithGuard(guardFromViper(logger)),
 	)
-	final, agentCtx, err := engine.Run(ctx, task, agent.RunOptions{Model: model, History: history})
+	meta := map[string]any{
+		"trigger":               "telegram",
+		"telegram_chat_id":      job.ChatID,
+		"telegram_message_id":   job.MessageID,
+		"telegram_chat_type":    job.ChatType,
+		"telegram_from_user_id": job.FromUserID,
+	}
+	final, agentCtx, err := engine.Run(ctx, task, agent.RunOptions{Model: model, History: history, Meta: meta})
 	return final, agentCtx, loadedSkills, err
 }
 
@@ -1274,6 +1357,81 @@ func (api *telegramAPI) sendDocument(ctx context.Context, chatID int64, filePath
 	_ = json.Unmarshal(raw, &ok)
 	if !ok.OK {
 		return fmt.Errorf("telegram sendDocument: ok=false")
+	}
+	return nil
+}
+
+func (api *telegramAPI) sendVoice(ctx context.Context, chatID int64, filePath string, filename string, caption string) error {
+	filePath = strings.TrimSpace(filePath)
+	if filePath == "" {
+		return fmt.Errorf("missing file path")
+	}
+
+	f, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	st, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if st.IsDir() {
+		return fmt.Errorf("path is a directory: %s", filePath)
+	}
+
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		filename = filepath.Base(filePath)
+	}
+	if filename == "" {
+		filename = "voice.ogg"
+	}
+	caption = strings.TrimSpace(caption)
+
+	pr, pw := io.Pipe()
+	mw := multipart.NewWriter(pw)
+	go func() {
+		defer pw.Close()
+		defer mw.Close()
+
+		_ = mw.WriteField("chat_id", strconv.FormatInt(chatID, 10))
+		if caption != "" {
+			_ = mw.WriteField("caption", caption)
+		}
+
+		part, err := mw.CreateFormFile("voice", filename)
+		if err != nil {
+			_ = pw.CloseWithError(err)
+			return
+		}
+		if _, err := io.Copy(part, f); err != nil {
+			_ = pw.CloseWithError(err)
+			return
+		}
+	}()
+
+	url := fmt.Sprintf("%s/bot%s/sendVoice", api.baseURL, api.token)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, pr)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+
+	resp, err := api.http.Do(req)
+	if err != nil {
+		return err
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("telegram http %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+	var ok telegramOKResponse
+	_ = json.Unmarshal(raw, &ok)
+	if !ok.OK {
+		return fmt.Errorf("telegram sendVoice: ok=false")
 	}
 	return nil
 }
@@ -2307,6 +2465,15 @@ type telegramSendFileTool struct {
 	enabled  bool
 }
 
+type telegramSendVoiceTool struct {
+	api        *telegramAPI
+	defaultTo  int64
+	cacheDir   string
+	maxBytes   int64
+	enabled    bool
+	allowedIDs map[int64]bool
+}
+
 func newTelegramSendFileTool(api *telegramAPI, chatID int64, cacheDir string, maxBytes int64) *telegramSendFileTool {
 	if maxBytes <= 0 {
 		maxBytes = 20 * 1024 * 1024
@@ -2410,4 +2577,134 @@ func (t *telegramSendFileTool) Execute(ctx context.Context, params map[string]an
 		return "", err
 	}
 	return fmt.Sprintf("sent file: %s", filename), nil
+}
+
+func newTelegramSendVoiceTool(api *telegramAPI, defaultChatID int64, cacheDir string, maxBytes int64, allowedIDs map[int64]bool) *telegramSendVoiceTool {
+	if maxBytes <= 0 {
+		maxBytes = 20 * 1024 * 1024
+	}
+	return &telegramSendVoiceTool{
+		api:        api,
+		defaultTo:  defaultChatID,
+		cacheDir:   strings.TrimSpace(cacheDir),
+		maxBytes:   maxBytes,
+		enabled:    true,
+		allowedIDs: allowedIDs,
+	}
+}
+
+func (t *telegramSendVoiceTool) Name() string { return "telegram_send_voice" }
+
+func (t *telegramSendVoiceTool) Description() string {
+	return "Sends a local .ogg/.opus voice message (from file_cache_dir) to Telegram. Prefer .ogg with Opus audio. Use chat_id when not running in an active chat context."
+}
+
+func (t *telegramSendVoiceTool) ParameterSchema() string {
+	s := map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]any{
+			"chat_id": map[string]any{
+				"type":        "integer",
+				"description": "Target Telegram chat_id. Optional in interactive chat context; required for scheduled runs unless default chat_id is set.",
+			},
+			"path": map[string]any{
+				"type":        "string",
+				"description": "Path to a local voice file under file_cache_dir (absolute or relative to that directory). Recommended: .ogg with Opus audio.",
+			},
+			"filename": map[string]any{
+				"type":        "string",
+				"description": "Optional filename shown to the user (default: basename of path).",
+			},
+			"caption": map[string]any{
+				"type":        "string",
+				"description": "Optional caption text.",
+			},
+		},
+		"required": []string{"path"},
+	}
+	b, _ := json.MarshalIndent(s, "", "  ")
+	return string(b)
+}
+
+func (t *telegramSendVoiceTool) Execute(ctx context.Context, params map[string]any) (string, error) {
+	if !t.enabled || t.api == nil {
+		return "", fmt.Errorf("telegram_send_voice is disabled")
+	}
+
+	chatID := t.defaultTo
+	if v, ok := params["chat_id"]; ok {
+		switch x := v.(type) {
+		case int64:
+			chatID = x
+		case int:
+			chatID = int64(x)
+		case float64:
+			chatID = int64(x)
+		}
+	}
+	if chatID == 0 {
+		return "", fmt.Errorf("missing required param: chat_id")
+	}
+	if len(t.allowedIDs) > 0 && !t.allowedIDs[chatID] {
+		return "", fmt.Errorf("unauthorized chat_id: %d", chatID)
+	}
+
+	rawPath, _ := params["path"].(string)
+	rawPath = strings.TrimSpace(rawPath)
+	if rawPath == "" {
+		return "", fmt.Errorf("missing required param: path")
+	}
+	cacheDir := strings.TrimSpace(t.cacheDir)
+	if cacheDir == "" {
+		return "", fmt.Errorf("file cache dir is not configured")
+	}
+
+	p := rawPath
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(cacheDir, p)
+	}
+	p = filepath.Clean(p)
+
+	cacheAbs, err := filepath.Abs(cacheDir)
+	if err != nil {
+		return "", err
+	}
+	pathAbs, err := filepath.Abs(p)
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(cacheAbs, pathAbs)
+	if err != nil {
+		return "", err
+	}
+	if rel == "." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || rel == ".." {
+		return "", fmt.Errorf("refusing to send file outside file_cache_dir: %s", pathAbs)
+	}
+
+	st, err := os.Stat(pathAbs)
+	if err != nil {
+		return "", err
+	}
+	if st.IsDir() {
+		return "", fmt.Errorf("path is a directory: %s", pathAbs)
+	}
+	if t.maxBytes > 0 && st.Size() > t.maxBytes {
+		return "", fmt.Errorf("file too large to send (>%d bytes): %s", t.maxBytes, pathAbs)
+	}
+
+	filename, _ := params["filename"].(string)
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		filename = filepath.Base(pathAbs)
+	}
+	filename = sanitizeFilename(filename)
+
+	caption, _ := params["caption"].(string)
+	caption = strings.TrimSpace(caption)
+
+	if err := t.api.sendVoice(ctx, chatID, pathAbs, filename, caption); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("sent voice: %s", filename), nil
 }

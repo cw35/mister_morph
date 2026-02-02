@@ -97,4 +97,5 @@ type Step struct {
 type RunOptions struct {
 	Model   string
 	History []llm.Message
+	Meta    map[string]any
 }

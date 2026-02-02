@@ -158,6 +158,12 @@ func (e *Engine) Run(ctx context.Context, task string, opts RunOptions) (*Final,
 		}
 		messages = append(messages, m)
 	}
+
+	if metaMsg, ok := buildInjectedMetaMessage(opts.Meta); ok {
+		messages = append(messages, llm.Message{Role: "user", Content: metaMsg})
+		log.Debug("run_meta_injected", "meta_bytes", len(metaMsg))
+	}
+
 	messages = append(messages, llm.Message{Role: "user", Content: task})
 
 	requestedWrites := ExtractFileWritePaths(task)

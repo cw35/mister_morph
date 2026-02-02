@@ -93,4 +93,9 @@ func initViperDefaults() {
 	viper.SetDefault("guard.audit.jsonl_path", "")
 	viper.SetDefault("guard.audit.rotate_max_bytes", int64(100*1024*1024))
 	viper.SetDefault("guard.approvals.enabled", true)
+
+	// Scheduler (cron) - disabled by default.
+	viper.SetDefault("scheduler.enabled", false)
+	viper.SetDefault("scheduler.concurrency", 1)
+	viper.SetDefault("scheduler.tick", 60*time.Second)
 }

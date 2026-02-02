@@ -193,6 +193,18 @@ db:
     foreign_keys: true
   automigrate: true
 
+# Resident scheduler (cron/interval jobs)
+#
+# - When enabled, the process periodically checks `cron_jobs` in SQLite (db.dsn),
+#   inserts `cron_runs`, and executes queued runs.
+# - Schedules run in UTC, misfire behavior is hardcoded to skip, and default timeout is hardcoded to 10 minutes.
+scheduler:
+  enabled: false
+  concurrency: 1
+  # Scheduler poll tick. Smaller = more precise scheduling, more DB checks. Use a Go duration string.
+  # Examples: "1s", "5s", "30s", "1m"
+  tick: "60s"
+
 # Long-term memory (Phase 1)
 memory:
   # Enable persistent per-user memory (Telegram only in Phase 1).

@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"github.com/quailyquaily/mistermorph/agent"
+	"github.com/quailyquaily/mistermorph/db"
 	"github.com/quailyquaily/mistermorph/guard"
 	"github.com/quailyquaily/mistermorph/llm"
+	"github.com/quailyquaily/mistermorph/scheduler"
 	"github.com/quailyquaily/mistermorph/tools"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -68,6 +70,50 @@ func newServeCmd() *cobra.Command {
 
 			sharedGuard := guardFromViper(logger)
 
+			if viper.GetBool("scheduler.enabled") {
+				dbCfg := dbConfigFromViper()
+				gdb, err := db.Open(cmd.Context(), dbCfg)
+				if err != nil {
+					return err
+				}
+				if dbCfg.AutoMigrate {
+					if err := db.AutoMigrate(gdb); err != nil {
+						return err
+					}
+				}
+
+				schedCfg := scheduler.DefaultConfig()
+				schedCfg.Enabled = true
+				schedCfg.Concurrency = viper.GetInt("scheduler.concurrency")
+				schedCfg.Tick = viper.GetDuration("scheduler.tick")
+
+				runner := func(ctx context.Context, task string, model string, meta map[string]any) (*string, error) {
+					final, runCtx, err := runOneTask(ctx, logger, logOpts, client, reg, baseCfg, sharedGuard, task, model, meta)
+					if err != nil {
+						return nil, err
+					}
+					if pendingID, ok := pendingApprovalID(final); ok {
+						return nil, fmt.Errorf("approval required: %s", pendingID)
+					}
+					if final == nil || final.Output == nil || runCtx == nil {
+						return nil, nil
+					}
+					if s, ok := final.Output.(string); ok && strings.TrimSpace(s) != "" {
+						out := strings.TrimSpace(s)
+						return &out, nil
+					}
+					return nil, nil
+				}
+
+				s, err := scheduler.New(gdb, llmModelFromViper(), runner, schedCfg, logger)
+				if err != nil {
+					return err
+				}
+				if err := s.Start(cmd.Context()); err != nil {
+					return err
+				}
+			}
+
 			// Worker: process tasks sequentially.
 			go func() {
 				for {
@@ -98,7 +144,7 @@ func newServeCmd() *cobra.Command {
 						qt.resumeApprovalID = ""
 						final, runCtx, runErr = resumeOneTask(qt.ctx, logger, logOpts, client, reg, baseCfg, sharedGuard, resumeApprovalID)
 					} else {
-						final, runCtx, runErr = runOneTask(qt.ctx, logger, logOpts, client, reg, baseCfg, sharedGuard, qt.info.Task, qt.info.Model)
+						final, runCtx, runErr = runOneTask(qt.ctx, logger, logOpts, client, reg, baseCfg, sharedGuard, qt.info.Task, qt.info.Model, nil)
 					}
 
 					if pendingID, ok := pendingApprovalID(final); ok && runErr == nil {
@@ -359,7 +405,7 @@ func errorsIsContextDeadline(ctx context.Context, err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "context deadline exceeded")
 }
 
-func runOneTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, registry *tools.Registry, baseCfg agent.Config, sharedGuard *guard.Guard, task string, model string) (*agent.Final, *agent.Context, error) {
+func runOneTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, registry *tools.Registry, baseCfg agent.Config, sharedGuard *guard.Guard, task string, model string, meta map[string]any) (*agent.Final, *agent.Context, error) {
 	promptSpec, _, skillAuthProfiles, err := promptSpecWithSkills(ctx, logger, logOpts, task, client, model, skillsConfigFromViper(model))
 	if err != nil {
 		return nil, nil, err
@@ -374,7 +420,7 @@ func runOneTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptio
 		agent.WithSkillAuthProfiles(skillAuthProfiles, viper.GetBool("secrets.require_skill_profiles")),
 		agent.WithGuard(sharedGuard),
 	)
-	return engine.Run(ctx, task, agent.RunOptions{Model: model})
+	return engine.Run(ctx, task, agent.RunOptions{Model: model, Meta: meta})
 }
 
 func resumeOneTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, registry *tools.Registry, baseCfg agent.Config, sharedGuard *guard.Guard, approvalRequestID string) (*agent.Final, *agent.Context, error) {

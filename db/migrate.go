@@ -14,5 +14,7 @@ func AutoMigrate(gdb *gorm.DB) error {
 	return gdb.AutoMigrate(
 		&models.MemoryItem{},
 		&models.IdentityLink{},
+		&models.CronJob{},
+		&models.CronRun{},
 	)
 }
