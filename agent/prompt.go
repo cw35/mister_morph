@@ -3,7 +3,7 @@ package agent
 import (
 	"strings"
 
-	"github.com/quailyquaily/mister_morph/tools"
+	"github.com/quailyquaily/mistermorph/tools"
 )
 
 type PromptSpec struct {

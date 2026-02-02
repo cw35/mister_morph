@@ -22,7 +22,7 @@ func Execute() {
 
 func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "mister_morph",
+		Use:   "mistermorph",
 		Short: "Unified Agent CLI",
 	}
 

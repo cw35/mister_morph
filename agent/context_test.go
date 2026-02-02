@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/quailyquaily/mister_morph/llm"
+	"github.com/quailyquaily/mistermorph/llm"
 )
 
 const costEpsilon = 1e-9

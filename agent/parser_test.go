@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/quailyquaily/mister_morph/llm"
+	"github.com/quailyquaily/mistermorph/llm"
 )
 
 func TestAgentResponseHasRawFinalAnswerField(t *testing.T) {

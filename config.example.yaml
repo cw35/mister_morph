@@ -1,13 +1,13 @@
-# Example config for mister_morph
+# Example config for mistermorph
 #
 # Usage:
-#   ./mister_morph run --config ./config.example.yaml --task "..."
+#   ./mistermorph run --config ./config.example.yaml --task "..."
 #
 # Env vars (override config):
 #   - Preferred: MISTER_MORPH_LLM_PROVIDER, MISTER_MORPH_LLM_ENDPOINT, MISTER_MORPH_LLM_MODEL, MISTER_MORPH_LLM_API_KEY
 
 # Global User-Agent for outbound HTTP requests (tools like url_fetch, web_search, etc).
-user_agent: "mister_morph/1.0 (+https://github.com/quailyquaily)"
+user_agent: "mistermorph/1.0 (+https://github.com/quailyquaily)"
 
 llm:
   # LLM provider name. Currently supported: "openai" (OpenAI-compatible Chat Completions API).
@@ -177,9 +177,9 @@ db:
   driver: "sqlite"
   # Driver-specific DSN. For sqlite, prefer a plain file path.
   # If empty, Phase 1 auto-selects:
-  #   1) $HOME/.morph/mister_morph.sqlite (if exists)
-  #   2) ./mister_morph.sqlite (if exists)
-  #   3) creates and uses $HOME/.morph/mister_morph.sqlite
+  #   1) $HOME/.morph/mistermorph.sqlite (if exists)
+  #   2) ./mistermorph.sqlite (if exists)
+  #   3) creates and uses $HOME/.morph/mistermorph.sqlite
   dsn: ""
   pool:
     # SQLite is single-writer; keep these conservative.
@@ -240,19 +240,19 @@ plan:
 
 # Daemon mode (local HTTP server).
 server:
-  # Bind address for `mister_morph serve`.
+  # Bind address for `mistermorph serve`.
   bind: "127.0.0.1"
-  # Port for `mister_morph serve`.
+  # Port for `mistermorph serve`.
   port: 8787
   # Bearer token required for submit/get endpoints.
   # Prefer env var: MISTER_MORPH_SERVER_AUTH_TOKEN
   auth_token: ""
   # Max queued tasks (in-memory).
   max_queue: 100
-  # Base URL used by `mister_morph submit` (client).
+  # Base URL used by `mistermorph submit` (client).
   url: "http://127.0.0.1:8787"
 
-# Telegram bot mode (`mister_morph telegram`).
+# Telegram bot mode (`mistermorph telegram`).
 telegram:
   # Bot token from @BotFather. Prefer env var: MISTER_MORPH_TELEGRAM_BOT_TOKEN
   bot_token: ""

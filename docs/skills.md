@@ -4,7 +4,7 @@ title: Skills
 
 # Skills
 
-`mister_morph` supports “skills”: small, self-contained folders that contain a `SKILL.md` file (required) plus optional scripts/resources. Skills are discovered from a set of root directories and can be loaded into the agent prompt either explicitly or via an LLM-based “router”.
+`mistermorph` supports “skills”: small, self-contained folders that contain a `SKILL.md` file (required) plus optional scripts/resources. Skills are discovered from a set of root directories and can be loaded into the agent prompt either explicitly or via an LLM-based “router”.
 
 Important: a skill is **not automatically a tool**. Skills add prompt context; tools are registered separately (e.g. `url_fetch`, `web_search`). If a skill includes scripts that you want the agent to execute, you must enable the `bash` tool (or implement a dedicated tool).
 
@@ -22,8 +22,8 @@ If the same skill `id` appears in multiple roots, the first root wins (higher pr
 
 ## Listing and inspecting skills
 
-- List: `mister_morph skills list`
-- Show one skill: `mister_morph skills show <skill>`
+- List: `mistermorph skills list`
+- Show one skill: `mistermorph skills show <skill>`
 
 `<skill>` can be either a skill `id` or a directory name.
 
@@ -56,9 +56,9 @@ If the selector returns unknown skill ids, they are ignored.
 
 ## Installing / updating built-in skills
 
-`mister_morph` ships some built-in skills under `assets/skills/`. To install (or update) them into your user skills directory:
+`mistermorph` ships some built-in skills under `assets/skills/`. To install (or update) them into your user skills directory:
 
-- `mister_morph skills install`
+- `mistermorph skills install`
 
 By default this writes to `~/.morph/skills`.
 
@@ -74,7 +74,7 @@ After installation, the built-in skills are picked up automatically via the defa
 
 If you have a URL that points directly to a `SKILL.md` file, you can install/update it into `~/.morph/skills`:
 
-- `mister_morph skills install "https://example.com/skill.md"`
+- `mistermorph skills install "https://example.com/skill.md"`
 
 Notes:
 

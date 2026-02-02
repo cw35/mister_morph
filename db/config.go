@@ -57,19 +57,19 @@ func ResolveSQLiteDSN(dsn string) (string, error) {
 	}
 
 	homeDir := filepath.Join(home, ".morph")
-	homeDB := filepath.Join(homeDir, "mister_morph.sqlite")
-	localDB := filepath.Clean("./mister_morph.sqlite")
+	homeDB := filepath.Join(homeDir, "mistermorph.sqlite")
+	localDB := filepath.Clean("./mistermorph.sqlite")
 
 	// Precedence:
-	// 1) existing $HOME/.morph/mister_morph.sqlite
+	// 1) existing $HOME/.morph/mistermorph.sqlite
 	if _, err := os.Stat(homeDB); err == nil {
 		return homeDB, nil
 	}
-	// 2) existing ./mister_morph.sqlite
+	// 2) existing ./mistermorph.sqlite
 	if _, err := os.Stat(localDB); err == nil {
 		return localDB, nil
 	}
-	// 3) create + use $HOME/.morph/mister_morph.sqlite (ensure dir exists)
+	// 3) create + use $HOME/.morph/mistermorph.sqlite (ensure dir exists)
 	if err := os.MkdirAll(homeDir, 0o755); err != nil {
 		return "", err
 	}

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/quailyquaily/mister_morph/agent"
+	"github.com/quailyquaily/mistermorph/agent"
 )
 
 func summarizeSteps(ctx *agent.Context) []map[string]any {

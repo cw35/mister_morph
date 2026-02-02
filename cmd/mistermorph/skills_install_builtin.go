@@ -17,8 +17,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/quailyquaily/mister_morph/assets"
-	"github.com/quailyquaily/mister_morph/llm"
+	"github.com/quailyquaily/mistermorph/assets"
+	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -475,7 +475,7 @@ func downloadURL(ctx context.Context, rawURL string, timeout time.Duration, maxB
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "mister_morph/1.0")
+	req.Header.Set("User-Agent", "mistermorph/1.0")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

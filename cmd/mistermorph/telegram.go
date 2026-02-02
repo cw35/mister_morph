@@ -24,11 +24,11 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/quailyquaily/mister_morph/agent"
-	"github.com/quailyquaily/mister_morph/db"
-	"github.com/quailyquaily/mister_morph/llm"
-	"github.com/quailyquaily/mister_morph/memory"
-	"github.com/quailyquaily/mister_morph/tools"
+	"github.com/quailyquaily/mistermorph/agent"
+	"github.com/quailyquaily/mistermorph/db"
+	"github.com/quailyquaily/mistermorph/llm"
+	"github.com/quailyquaily/mistermorph/memory"
+	"github.com/quailyquaily/mistermorph/tools"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gorm.io/gorm"
@@ -793,16 +793,16 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 		}
 	}
 
-		engine := agent.New(
-			client,
-			reg,
-			cfg,
-			promptSpec,
-			agent.WithLogger(logger),
-			agent.WithLogOptions(logOpts),
-			agent.WithSkillAuthProfiles(skillAuthProfiles, viper.GetBool("secrets.require_skill_profiles")),
-			agent.WithGuard(guardFromViper(logger)),
-		)
+	engine := agent.New(
+		client,
+		reg,
+		cfg,
+		promptSpec,
+		agent.WithLogger(logger),
+		agent.WithLogOptions(logOpts),
+		agent.WithSkillAuthProfiles(skillAuthProfiles, viper.GetBool("secrets.require_skill_profiles")),
+		agent.WithGuard(guardFromViper(logger)),
+	)
 	final, agentCtx, err := engine.Run(ctx, task, agent.RunOptions{Model: model, History: history})
 	return final, agentCtx, loadedSkills, err
 }

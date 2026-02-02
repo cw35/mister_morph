@@ -17,7 +17,7 @@ import (
 func newSubmitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "submit",
-		Short: "Submit a task to a running mister_morph daemon",
+		Short: "Submit a task to a running mistermorph daemon",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			task, _ := cmd.Flags().GetString("task")
 			task = strings.TrimSpace(task)

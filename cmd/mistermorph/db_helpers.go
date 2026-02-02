@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/quailyquaily/mister_morph/db"
+	"github.com/quailyquaily/mistermorph/db"
 	"github.com/spf13/viper"
 )
 

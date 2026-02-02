@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/quailyquaily/mister_morph/tools"
+	"github.com/quailyquaily/mistermorph/tools"
 )
 
 type ToolSet struct {

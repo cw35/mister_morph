@@ -88,10 +88,6 @@ Recommended hardening defaults:
 - disable proxies by default
 - allow redirects only if same-origin and still allowlisted (or disable redirects)
 
-Notes on the two “hardening” toggles:
-- `deny_private_ips`: reduces SSRF risk by blocking literal `localhost` / `127.0.0.1` / RFC1918 private IP targets. In M1 it does **not** resolve hostnames to IPs; if you need stronger protection, enforce egress at the OS/container/network layer.
-- `allow_proxy`: when false, the HTTP client should ignore `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` env vars so requests cannot be transparently routed through a proxy/MITM.
-
 ### 5.3 Example config sketch
 
 ```yaml
@@ -165,8 +161,6 @@ Approvals must bind to a specific action snapshot:
 - Compute `action_hash = SHA256(canonical_json(action))`.
 - Store `approval_request_id -> {action_hash, created_at, expires_at, status, actor, reasons}`.
 - On resume, recompute `action_hash` and require it matches the stored value; otherwise deny.
-
-M1 note: approval expiry is currently **hard-coded** (5 minutes) to keep config surface small.
 
 ### 7.3 API shape (conceptual)
 
@@ -254,7 +248,7 @@ Decision:
 
 This repo already has pieces that can be reused:
 - `tools/builtin/confirm.go`: TTY confirmation primitive (useful for CLI “sync wait”).
-- `cmd/mister_morph/skills_install_builtin.go`: remote skill review + confirm flow; can be refactored to emit Guard audit events and to use the same approval binding.
+- `cmd/mistermorph/skills_install_builtin.go`: remote skill review + confirm flow; can be refactored to emit Guard audit events and to use the same approval binding.
 - `tools/builtin/url_fetch.go`: already enforces destination allow policies at the tool layer (auth profiles). Guard should complement this with “global outbound allowlists” and a consistent approval/audit story.
 
 ## 10. M1 Acceptance Criteria
@@ -313,23 +307,3 @@ M1 should include basic retention controls:
 Even with redaction, treat audit logs as sensitive:
 - do not store unredacted tool params or outputs
 - do not store “full previews” for approvals; keep previews minimal
-
-## 12. Implementation TODO (M1)
-
-- [x] Add `guard/` package: actions, decisions, redactor, network policy context helpers
-- [x] Add JSONL audit sink with size-based rotation
-- [x] Add SQLite approvals store (`guard_approvals`) for async approvals + resume metadata
-- [x] Wire Guard into the engine:
-  - [x] Tool pre-hook (`ToolCallPre`): enforce url_fetch destination allowlist, require approval for bash
-  - [x] Tool post-hook (`ToolCallPost`): redact observations before adding to context
-  - [x] Output hook (`OutputPublish`): redact final output before returning
-- [x] Enforce guard network policy in `url_fetch` redirects/proxy handling (when policy is present in context)
-- [x] Add viper config defaults + `config.example.yaml` examples for `guard.*`
-- [x] Add daemon HTTP admin endpoints to approve/deny/resume (`/approvals/{id}/*`)
-- [ ] Add Telegram approval commands to approve/deny/resume runs (M1 controller integration)
-- [ ] Persist daemon task metadata across restarts (current in-memory queue means resuming is only possible while the daemon is still running)
-- [ ] Add retention/rotation plumbing for JSONL (delete old files / max total size) and document recommended ops setup
-- [ ] Add more test coverage:
-  - [ ] approval flow (create → approve → `Engine.Resume`)
-  - [ ] url_fetch redirect bypass cases
-  - [ ] audit JSONL write/rotate behavior

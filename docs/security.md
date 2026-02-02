@@ -6,7 +6,7 @@ title: Security
 
 This document focuses on:
 
-- **process isolation** and **filesystem sandboxing** when running `mister_morph` as a long-lived daemon (for example, via `mister_morph serve`)
+- **process isolation** and **filesystem sandboxing** when running `mistermorph` as a long-lived daemon (for example, via `mistermorph serve`)
 - **secret handling** for authenticated outbound HTTP calls (profile-based credential injection)
 - **Guard (M1)**: outbound allowlists, redaction, async approvals, and audit logs
 
@@ -28,7 +28,7 @@ This document focuses on:
 
 ## Threat model
 
-`mister_morph` is an agent that can:
+`mistermorph` is an agent that can:
 
 - make outbound HTTP(S) calls (LLM provider, web_search, url_fetch, Telegram)
 - read local files (read_file tool, skill discovery)
@@ -96,7 +96,7 @@ Guard approvals are asynchronous by design:
 - Approval state is stored in SQLite (reuses `db.dsn` resolution; no separate `guard.approvals.sqlite_dsn`).
 - Approval expiry is **hard-coded to 5 minutes** in M1.
 
-Daemon (`mister_morph serve`) exposes minimal admin endpoints (authenticated with `server.auth_token`):
+Daemon (`mistermorph serve`) exposes minimal admin endpoints (authenticated with `server.auth_token`):
 
 - `GET /approvals/{id}` (status + metadata; never returns `resume_state`)
 - `POST /approvals/{id}/approve`
@@ -123,7 +123,7 @@ systemd provides a first-class “service hardening” feature set for this. Unl
 
 The recommended unit assumes:
 
-- Binary: `/opt/morph/mister_morph`
+- Binary: `/opt/morph/mistermorph`
 - Config: `/opt/morph/config.yaml`
 - Skills: `/opt/morph/skills` (configure `skills.dirs` to point here)
 - Persistent state (sqlite DB): `/var/lib/morph/`
@@ -141,7 +141,7 @@ Agents are extremely good at “accidentally” leaking secrets if you ever put 
 - tool parameters (especially headers)
 - logs / traces
 
-To avoid this, `mister_morph` supports **profile-based credential injection**:
+To avoid this, `mistermorph` supports **profile-based credential injection**:
 
 - Skills/LLM only reference a profile id (e.g. `auth_profile: "jsonbill"`).
 - The host resolves the real secret value from the environment (via `secret_ref`).
@@ -215,11 +215,11 @@ systemd can create and manage service-owned directories under `/var/lib`, `/var/
 - `StateDirectory=morph` → writable `/var/lib/morph` (persistent state)
 - `CacheDirectory=morph` → writable `/var/cache/morph` (ephemeral cache)
 
-For `mister_morph`, this split is recommended because sqlite DB files are not “cache” and should not be treated as disposable.
+For `mistermorph`, this split is recommended because sqlite DB files are not “cache” and should not be treated as disposable.
 
 The example unit additionally pins the agent’s paths via env vars:
 
-- `MISTER_MORPH_DB_DSN=/var/lib/morph/mister_morph.sqlite`
+- `MISTER_MORPH_DB_DSN=/var/lib/morph/mistermorph.sqlite`
 - `MISTER_MORPH_FILE_CACHE_DIR=/var/cache/morph`
 
 #### Optional bind mounts (fine-grained allowlist)

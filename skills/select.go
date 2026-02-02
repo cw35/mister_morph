@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/quailyquaily/mister_morph/llm"
+	"github.com/quailyquaily/mistermorph/llm"
 )
 
 type SelectOptions struct {

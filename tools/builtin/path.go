@@ -1,7 +1,7 @@
 package builtin
 
 import (
-	"github.com/quailyquaily/mister_morph/internal/pathutil"
+	"github.com/quailyquaily/mistermorph/internal/pathutil"
 )
 
 func expandHomePath(p string) string {

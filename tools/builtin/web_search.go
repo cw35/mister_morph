@@ -35,7 +35,7 @@ func NewWebSearchTool(enabled bool, baseURL string, timeout time.Duration, maxRe
 		maxResults = 5
 	}
 	if strings.TrimSpace(userAgent) == "" {
-		userAgent = "mister_morph/1.0 (+https://github.com/quailyquaily)"
+		userAgent = "mistermorph/1.0 (+https://github.com/quailyquaily)"
 	}
 
 	return &WebSearchTool{

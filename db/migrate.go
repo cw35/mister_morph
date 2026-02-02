@@ -3,7 +3,7 @@ package db
 import (
 	"fmt"
 
-	"github.com/quailyquaily/mister_morph/db/models"
+	"github.com/quailyquaily/mistermorph/db/models"
 	"gorm.io/gorm"
 )
 

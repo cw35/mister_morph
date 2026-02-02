@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/quailyquaily/mister_morph/skills"
+	"github.com/quailyquaily/mistermorph/skills"
 	"github.com/spf13/cobra"
 )
 

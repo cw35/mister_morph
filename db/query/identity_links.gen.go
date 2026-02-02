@@ -18,7 +18,7 @@ import (
 
 	"gorm.io/plugin/dbresolver"
 
-	"github.com/quailyquaily/mister_morph/db/models"
+	"github.com/quailyquaily/mistermorph/db/models"
 )
 
 func newIdentityLink(db *gorm.DB, opts ...gen.DOOption) identityLink {

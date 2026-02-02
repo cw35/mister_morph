@@ -22,9 +22,9 @@ func main() {
 	bin := os.Getenv("MISTER_MORPH_BIN")
 	if bin == "" {
 		var err error
-		bin, err = exec.LookPath("mister_morph")
+		bin, err = exec.LookPath("mistermorph")
 		if err != nil {
-			_, _ = fmt.Fprintln(os.Stderr, "Set MISTER_MORPH_BIN to the built mister_morph binary, or add it to PATH.")
+			_, _ = fmt.Fprintln(os.Stderr, "Set MISTER_MORPH_BIN to the built mistermorph binary, or add it to PATH.")
 			os.Exit(2)
 		}
 	}

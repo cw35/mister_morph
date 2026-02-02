@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/quailyquaily/mister_morph/db"
-	"github.com/quailyquaily/mister_morph/guard"
-	"github.com/quailyquaily/mister_morph/internal/pathutil"
+	"github.com/quailyquaily/mistermorph/db"
+	"github.com/quailyquaily/mistermorph/guard"
+	"github.com/quailyquaily/mistermorph/internal/pathutil"
 	"github.com/spf13/viper"
 )
 

@@ -10,9 +10,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/quailyquaily/mister_morph/agent"
-	"github.com/quailyquaily/mister_morph/providers/openai"
-	"github.com/quailyquaily/mister_morph/tools"
+	"github.com/quailyquaily/mistermorph/agent"
+	"github.com/quailyquaily/mistermorph/providers/openai"
+	"github.com/quailyquaily/mistermorph/tools"
 )
 
 // ListDirTool is an example of a project-specific tool you provide to the agent.

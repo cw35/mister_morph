@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/quailyquaily/mister_morph/secrets"
-	"github.com/quailyquaily/mister_morph/tools"
-	"github.com/quailyquaily/mister_morph/tools/builtin"
+	"github.com/quailyquaily/mistermorph/secrets"
+	"github.com/quailyquaily/mistermorph/tools"
+	"github.com/quailyquaily/mistermorph/tools/builtin"
 	"github.com/spf13/viper"
 )
 

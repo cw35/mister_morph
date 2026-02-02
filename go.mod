@@ -1,4 +1,4 @@
-module github.com/quailyquaily/mister_morph
+module github.com/quailyquaily/mistermorph
 
 go 1.22
 

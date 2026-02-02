@@ -3,7 +3,7 @@ package main
 import (
 	"gorm.io/gen"
 
-	"github.com/quailyquaily/mister_morph/db/models"
+	"github.com/quailyquaily/mistermorph/db/models"
 )
 
 //go:generate env GOCACHE=/tmp/go-build go run .

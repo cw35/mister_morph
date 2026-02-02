@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/quailyquaily/mister_morph/guard"
-	"github.com/quailyquaily/mister_morph/secrets"
+	"github.com/quailyquaily/mistermorph/guard"
+	"github.com/quailyquaily/mistermorph/secrets"
 )
 
 type URLFetchAuth struct {
@@ -50,7 +50,7 @@ func NewURLFetchToolWithAuth(enabled bool, timeout time.Duration, maxBytes int64
 		maxBytes = 512 * 1024
 	}
 	if strings.TrimSpace(userAgent) == "" {
-		userAgent = "mister_morph/1.0 (+https://github.com/quailyquaily)"
+		userAgent = "mistermorph/1.0 (+https://github.com/quailyquaily)"
 	}
 	fileCacheDir = strings.TrimSpace(fileCacheDir)
 	if fileCacheDir == "" {

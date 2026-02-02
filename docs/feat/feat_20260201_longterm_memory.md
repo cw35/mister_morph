@@ -365,9 +365,9 @@ memory/
 
 Integration points (existing):
 
-- `cmd/mister_morph/telegram.go` wires memory enabled/disabled, prompt injection, and tool registration.
-- `cmd/mister_morph/serve.go` and `cmd/mister_morph/run.go` keep memory **disabled** (no identity).
-- `cmd/mister_morph/registry.go` may remain unchanged; Telegram can build a registry and then register the memory tool per-request (or build a new registry factory).
+- `cmd/mistermorph/telegram.go` wires memory enabled/disabled, prompt injection, and tool registration.
+- `cmd/mistermorph/serve.go` and `cmd/mistermorph/run.go` keep memory **disabled** (no identity).
+- `cmd/mistermorph/registry.go` may remain unchanged; Telegram can build a registry and then register the memory tool per-request (or build a new registry factory).
 
 ## 16. Interfaces (Go) and data flow
 
@@ -616,18 +616,18 @@ memory:
 Notes:
 
 - In Phase 1, only `db.driver="sqlite"` is implemented; other values should return a clear error (future-proof config, not future-proof runtime).
-- If `db.dsn` is set, it is passed through to the driver. For sqlite (glebarez/modernc), it may be a plain file path (recommended) or a SQLite URI such as `file:./mister_morph.sqlite?cache=shared`.
+- If `db.dsn` is set, it is passed through to the driver. For sqlite (glebarez/modernc), it may be a plain file path (recommended) or a SQLite URI such as `file:./mistermorph.sqlite?cache=shared`.
 - If `db.dsn` is empty, Phase 1 resolves it with this precedence:
-  1) If `$HOME/.morph/mister_morph.sqlite` exists, use it.
-  2) Else if `./mister_morph.sqlite` exists, use it.
-  3) Else create and use `$HOME/.morph/mister_morph.sqlite` (ensuring `$HOME/.morph/` exists).
+  1) If `$HOME/.morph/mistermorph.sqlite` exists, use it.
+  2) Else if `./mistermorph.sqlite` exists, use it.
+  3) Else create and use `$HOME/.morph/mistermorph.sqlite` (ensuring `$HOME/.morph/` exists).
 - Even when `memory.enabled=true`, memory is still **disabled per-request** if no identity is resolved.
 - For `serve` and `run` (CLI), keep identity resolution disabled so memory is a noop regardless of config.
 - In Phase 1, memory tools are always enabled when memory is enabled for the request; dangerous wipe operations are not exposed (no `wipe_subject` tool), so there is no `memory.tools.*` config.
 
 ## 21. Telegram wiring plan (minimal code changes)
 
-In `cmd/mister_morph/telegram.go`, per incoming message (after trigger decision):
+In `cmd/mistermorph/telegram.go`, per incoming message (after trigger decision):
 
 1. Determine `RequestContext`:
    - `private` if `chat.type=="private"`, else `public`

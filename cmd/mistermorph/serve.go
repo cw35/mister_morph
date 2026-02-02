@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/quailyquaily/mister_morph/agent"
-	"github.com/quailyquaily/mister_morph/guard"
-	"github.com/quailyquaily/mister_morph/llm"
-	"github.com/quailyquaily/mister_morph/tools"
+	"github.com/quailyquaily/mistermorph/agent"
+	"github.com/quailyquaily/mistermorph/guard"
+	"github.com/quailyquaily/mistermorph/llm"
+	"github.com/quailyquaily/mistermorph/tools"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

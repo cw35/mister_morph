@@ -25,7 +25,7 @@ func initViperDefaults() {
 	viper.SetDefault("file_cache.max_age", 7*24*time.Hour)
 	viper.SetDefault("file_cache.max_files", 1000)
 	viper.SetDefault("file_cache.max_total_bytes", int64(512*1024*1024))
-	viper.SetDefault("user_agent", "mister_morph/1.0 (+https://github.com/quailyquaily)")
+	viper.SetDefault("user_agent", "mistermorph/1.0 (+https://github.com/quailyquaily)")
 
 	// Skills
 	viper.SetDefault("skills.mode", "smart")

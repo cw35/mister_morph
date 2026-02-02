@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/quailyquaily/mister_morph/secrets"
+	"github.com/quailyquaily/mistermorph/secrets"
 )
 
 func TestURLFetchTool_AuthProfileInjectsHeader(t *testing.T) {

@@ -7,8 +7,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/quailyquaily/mister_morph/llm"
-	"github.com/quailyquaily/mister_morph/tools"
+	"github.com/quailyquaily/mistermorph/llm"
+	"github.com/quailyquaily/mistermorph/tools"
 )
 
 // --- mock LLM client ---

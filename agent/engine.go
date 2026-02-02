@@ -7,10 +7,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/quailyquaily/mister_morph/guard"
-	"github.com/quailyquaily/mister_morph/llm"
-	"github.com/quailyquaily/mister_morph/secrets"
-	"github.com/quailyquaily/mister_morph/tools"
+	"github.com/quailyquaily/mistermorph/guard"
+	"github.com/quailyquaily/mistermorph/llm"
+	"github.com/quailyquaily/mistermorph/secrets"
+	"github.com/quailyquaily/mistermorph/tools"
 )
 
 type Hook func(ctx context.Context, step int, agentCtx *Context, messages *[]llm.Message) error
@@ -258,4 +258,3 @@ func sortedMapKeys(m map[string]any) []string {
 	sort.Strings(out)
 	return out
 }
-

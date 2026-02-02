@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/quailyquaily/mister_morph/guard"
-	"github.com/quailyquaily/mister_morph/secrets"
+	"github.com/quailyquaily/mistermorph/guard"
+	"github.com/quailyquaily/mistermorph/secrets"
 )
 
 func (e *Engine) Resume(ctx context.Context, approvalRequestID string) (*Final, *Context, error) {

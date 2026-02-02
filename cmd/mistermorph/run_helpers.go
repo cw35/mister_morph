@@ -3,7 +3,7 @@ package main
 import (
 	"log/slog"
 
-	"github.com/quailyquaily/mister_morph/agent"
+	"github.com/quailyquaily/mistermorph/agent"
 	"github.com/spf13/viper"
 )
 

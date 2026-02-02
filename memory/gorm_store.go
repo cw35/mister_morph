@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/quailyquaily/mister_morph/db/models"
+	"github.com/quailyquaily/mistermorph/db/models"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

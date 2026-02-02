@@ -4,7 +4,7 @@ Unified Agent CLI + reusable Go agent core.
 
 ## Table of contents
 
-- [Why Mister Morph](#why-mister_morph)
+- [Why Mister Morph](#why-mistermorph)
 - [Quickstart](#quickstart)
 - [Embedding](#embedding)
 - [Skills (SKILL.md)](#skills-skillmd)
@@ -26,13 +26,13 @@ What makes this project worth looking at:
 ### Build
 
 ```bash
-go build -o ./bin/mister_morph ./cmd/mister_morph
+go build -o ./bin/mistermorph ./cmd/mistermorph
 ```
 
 ### Run 
 
 ```bash
-./bin/mister_morph run --task "Summarize this repo structure" --provider openai --model gpt-5 --api-key "$OPENAI_API_KEY" --endpoint "https://api.openai.com/v1"
+./bin/mistermorph run --task "Summarize this repo structure" --provider openai --model gpt-5 --api-key "$OPENAI_API_KEY" --endpoint "https://api.openai.com/v1"
 ```
 
 ### Human-in-the-loop (interrupt + inject)
@@ -40,7 +40,7 @@ go build -o ./bin/mister_morph ./cmd/mister_morph
 Run with `--interactive`, then press Ctrl-C during the loop to pause and type extra context (end with an empty line).
 
 ```bash
-./bin/mister_morph run --interactive --task "..." --provider openai --model gpt-4o-mini --api-key "$OPENAI_API_KEY" --endpoint "https://api.openai.com/v1"
+./bin/mistermorph run --interactive --task "..." --provider openai --model gpt-4o-mini --api-key "$OPENAI_API_KEY" --endpoint "https://api.openai.com/v1"
 ```
 
 ## Embedding to other projects
@@ -52,18 +52,18 @@ Two common integration options:
 
 ## Skills
 
-`mister_morph` can discover skills under `~/.morph/skills`, `~/.claude/skills`, and `~/.codex/skills` (recursively), and inject selected `SKILL.md` content into the system prompt.
+`mistermorph` can discover skills under `~/.morph/skills`, `~/.claude/skills`, and `~/.codex/skills` (recursively), and inject selected `SKILL.md` content into the system prompt.
 
 By default, `run` uses `skills.mode=smart` so the agent can decide which skills to load (no need to mention `$SkillName`).
 
 Docs: `docs/skills.md`
 
 ```bash
-./bin/mister_morph skills list
-./bin/mister_morph skills show skill-creator
-./bin/mister_morph run --task "Draft a new skill for X" --skills-mode smart
-./bin/mister_morph run --task "Use $skill-creator to draft a new skill" --skills-mode explicit --skills-auto
-./bin/mister_morph run --task "..." --skills-mode explicit --skill skill-creator
+./bin/mistermorph skills list
+./bin/mistermorph skills show skill-creator
+./bin/mistermorph run --task "Draft a new skill for X" --skills-mode smart
+./bin/mistermorph run --task "Use $skill-creator to draft a new skill" --skills-mode explicit --skills-auto
+./bin/mistermorph run --task "..." --skills-mode explicit --skill skill-creator
 ```
 
 ## Daemon mode (serve + submit)
@@ -76,13 +76,13 @@ Start the daemon:
 
 ```bash
 export MISTER_MORPH_SERVER_AUTH_TOKEN="change-me"
-./bin/mister_morph serve --server-port 8787 --log-level info
+./bin/mistermorph serve --server-port 8787 --log-level info
 ```
 
 Submit a task:
 
 ```bash
-./bin/mister_morph submit --server-url http://127.0.0.1:8787 --auth-token "$MISTER_MORPH_SERVER_AUTH_TOKEN" --wait \
+./bin/mistermorph submit --server-url http://127.0.0.1:8787 --auth-token "$MISTER_MORPH_SERVER_AUTH_TOKEN" --wait \
   --task "Summarize this repo and write to ./summary.md"
 ```
 
@@ -92,7 +92,7 @@ Run a Telegram bot (long polling) so you can chat with the agent from Telegram:
 
 ```bash
 export MISTER_MORPH_TELEGRAM_BOT_TOKEN="123456:ABC..."
-./bin/mister_morph telegram --telegram-allowed-chat-id 123456789 --log-level info
+./bin/mistermorph telegram --telegram-allowed-chat-id 123456789 --log-level info
 ```
 
 Notes:
@@ -111,7 +111,7 @@ Notes:
 
 ## Configuration
 
-`mister_morph` uses Viper, so you can configure it via flags, env vars, or a config file.
+`mistermorph` uses Viper, so you can configure it via flags, env vars, or a config file.
 
 - Config file: `--config /path/to/config.yaml` (supports `.yaml/.yml/.json/.toml/.ini`)
 - Env var prefix: `MISTER_MORPH_`

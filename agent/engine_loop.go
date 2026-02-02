@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/quailyquaily/mister_morph/guard"
-	"github.com/quailyquaily/mister_morph/llm"
+	"github.com/quailyquaily/mistermorph/guard"
+	"github.com/quailyquaily/mistermorph/llm"
 )
 
 type engineLoopState struct {

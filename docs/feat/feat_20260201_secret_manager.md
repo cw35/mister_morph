@@ -23,7 +23,7 @@ There are also a few points that need to be strengthened/clarified (recommended 
 - **Do not let the LLM assemble full HTTP requests**: headers/body assembly must be controlled by the host (tool implementation or middleware).
 - **Log redaction must cover common header names**: redaction based on `api_key` / `authorization` alone is easy to miss; names like `X-API-Key` must be covered.
 
-## 2. Proposed Architecture (mister_morph)
+## 2. Proposed Architecture (mistermorph)
 
 ### 2.1 Concepts and Minimal Data Model
 
@@ -200,13 +200,13 @@ If user task text can influence `auth_profile`, validate strictly:
 
 **Config & Wiring (cmd/)**
 
-- [x] Add default fail-closed values in `cmd/mister_morph/defaults.go`:
+- [x] Add default fail-closed values in `cmd/mistermorph/defaults.go`:
   - [x] `secrets.enabled=false`
   - [x] `secrets.allow_profiles=[]` (empty means “all profiles disabled”)
   - [x] `secrets.aliases={}`
   - [x] `auth_profiles={}`
 - [x] Add full examples and comments for `secrets:` and `auth_profiles:` in `config.example.yaml` (and clarify: bash disabled by default; when secrets enabled, curl denied by default).
-- [x] In `cmd/mister_morph/registry.go`:
+- [x] In `cmd/mistermorph/registry.go`:
   - [x] Build `EnvResolver` from viper (`secrets.aliases` supported)
   - [x] Load/validate `auth_profiles` and build a read-only `ProfileStore` (discard invalid profiles)
   - [x] When `secrets.enabled=true`, keep `bash` optional but deny `curl` by default
@@ -293,7 +293,7 @@ If user task text can influence `auth_profile`, validate strictly:
 
 ### 5.1 config.yaml snippet
 
-Note: `config.yaml` here refers to the main `mister_morph` config (passed via `--config`, or your local convention). It should not live inside a skill directory.
+Note: `config.yaml` here refers to the main `mistermorph` config (passed via `--config`, or your local convention). It should not live inside a skill directory.
 
 - Skill directories should contain only shareable content like `SKILL.md` / `scripts/` / `references/` and must not contain environment-specific config or plaintext secrets.
 - If you want a skill to carry “how to configure the main config” examples, include them as text in `SKILL.md` or `references/` (e.g. `references/config_snippet.yaml`) for manual merging.
@@ -358,4 +358,3 @@ auth_profiles: ["jsonbill"]
 - **Secret/profile scope model**: beyond allowlists, define scope boundaries (per-run / per-skill / per-tool / per-domain) to prevent reuse across unrelated actions.
 - **Network boundaries**: proxy usage (`HTTP_PROXY`), custom `Host`, and TLS verification policies all affect “least exposure”; document defaults and disallowed options.
 - **Test coverage**: ensure tests cover sensitive header rejection, auth_profile injection without observation/log leakage, redirect behavior, and response redaction rules.
-

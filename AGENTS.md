@@ -2,28 +2,28 @@
 
 ## Project Structure & Module Organization
 
-- `cmd/mister_morph/`: CLI entrypoint and subcommands.
+- `cmd/mistermorph/`: CLI entrypoint and subcommands.
 - `agent/`: agent engine (loop, parsing, prompts, logging).
 - `llm/`: shared LLM types/interfaces used by the agent and providers.
 - `providers/`: LLM backends (currently `providers/openai/` for OpenAI-compatible Chat Completions).
 - `tools/` and `tools/builtin/`: tool registry and built-ins (`web_search`, `url_fetch`, `bash`, `read_file`, `echo`).
 - `skills/`: skill discovery and selection logic for `SKILL.md`.
 - `demo/`: embedding examples (`demo/embed-go/`, `demo/embed-cli/`).
-- Root configs: `config.example.yaml` (template) and `config.yaml` (local). `mister_morph` in repo root is a build artifact.
+- Root configs: `config.example.yaml` (template) and `config.yaml` (local). `mistermorph` in repo root is a build artifact.
 
 ## Build, Test, and Development Commands
 
-- Build: `go build -o ./bin/mister_morph ./cmd/mister_morph`
-- Run (no build): `go run ./cmd/mister_morph --help`
+- Build: `go build -o ./bin/mistermorph ./cmd/mistermorph`
+- Run (no build): `go run ./cmd/mistermorph --help`
 - Test: `go test ./...` (currently no `*_test.go` files)
 - Static checks: `go vet ./...`
 - Example run:
-  - `./bin/mister_morph run --task "Summarize this repo" --provider openai --model gpt-4o-mini --api-key "$OPENAI_API_KEY"`
+  - `./bin/mistermorph run --task "Summarize this repo" --provider openai --model gpt-4o-mini --api-key "$OPENAI_API_KEY"`
 
 ## Demos (Embedding)
 
 - Go library demo: `cd demo/embed-go && OPENAI_API_KEY="..." go run . --task "List files and summarize."`
-- CLI subprocess demo: `go build -o ./bin/mister_morph ./cmd/mister_morph`, then `cd demo/embed-cli && MISTER_MORPH_BIN=../../bin/mister_morph OPENAI_API_KEY="..." go run . --task "Search for OpenAI and fetch the first result"`
+- CLI subprocess demo: `go build -o ./bin/mistermorph ./cmd/mistermorph`, then `cd demo/embed-cli && MISTER_MORPH_BIN=../../bin/mistermorph OPENAI_API_KEY="..." go run . --task "Search for OpenAI and fetch the first result"`
 - Both demos require network access (OpenAI-compatible provider).
 
 ## Coding Style & Naming Conventions
