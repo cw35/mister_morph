@@ -321,7 +321,8 @@ func newTelegramCmd() *cobra.Command {
 								h = nil
 							}
 
-							_ = api.sendChatAction(context.Background(), chatID, "typing")
+							typingStop := startTypingTicker(context.Background(), api, chatID, "typing", 4*time.Second)
+							defer typingStop()
 
 							ctx, cancel := context.WithTimeout(context.Background(), taskTimeout)
 							final, _, loadedSkills, runErr := runTelegramTask(ctx, logger, logOpts, client, reg, api, filesEnabled, fileCacheDir, filesMaxBytes, cfg, job, model, h, sticky)
@@ -2014,6 +2015,48 @@ func (api *telegramAPI) sendChatAction(ctx context.Context, chatID int64, action
 		return fmt.Errorf("telegram http %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
 	return nil
+}
+
+func startTypingTicker(ctx context.Context, api *telegramAPI, chatID int64, action string, interval time.Duration) func() {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if api == nil || chatID == 0 {
+		return func() {}
+	}
+	if interval <= 0 {
+		interval = 4 * time.Second
+	}
+	action = strings.TrimSpace(action)
+	if action == "" {
+		action = "typing"
+	}
+
+	ticker := time.NewTicker(interval)
+	done := make(chan struct{})
+
+	go func() {
+		_ = api.sendChatAction(ctx, chatID, action)
+		for {
+			select {
+			case <-ticker.C:
+				_ = api.sendChatAction(ctx, chatID, action)
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return func() {
+		select {
+		case <-done:
+		default:
+			close(done)
+		}
+		ticker.Stop()
+	}
 }
 
 type telegramDownloadedFile struct {
