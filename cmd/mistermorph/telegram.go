@@ -697,7 +697,7 @@ func newTelegramCmd() *cobra.Command {
 								)
 							}
 							text = strings.TrimSpace(dec.TaskText)
-							if strings.TrimSpace(text) == "" && !messageHasDownloadableFile(msg) {
+							if strings.TrimSpace(text) == "" && !messageHasDownloadableFile(msg) && msg.ReplyTo == nil {
 								_ = api.sendMessage(context.Background(), chatID, "usage: /ask <task> (or send text with a mention/reply)", true)
 								continue
 							}
@@ -729,7 +729,7 @@ func newTelegramCmd() *cobra.Command {
 						quoted := buildReplyContext(msg.ReplyTo)
 						if quoted != "" {
 							if strings.TrimSpace(text) == "" {
-								text = "Please interpret the quoted message and proceed in your understanding."
+								text = "Please read the quoted message, and proceed according to the previous context, or your understanding, in the same langauge."
 							}
 							text = "Quoted message:\n> " + quoted + "\n\nUser request:\n" + strings.TrimSpace(text)
 						}
