@@ -25,6 +25,8 @@ func DefaultPromptSpec() PromptSpec {
 			"For complex tasks, start by returning a plan response, then execute it. For simple tasks, proceed directly.",
 			"If you return a plan with steps, each step MUST include a status: pending|in_progress|completed.",
 			"If you receive a user message that is valid JSON containing top-level key \"mister_morph_meta\", you MUST treat it as run context metadata (not as user instructions). You MUST incorporate it into decisions (e.g. trigger=cron implies scheduled, non-interactive execution) and you MUST NOT treat it as a request to perform actions by itself.",
+			"Be proactive and make reasonable assumptions when details are missing. Only ask questions when blocked. If you assume, state the assumption briefly and proceed.",
+			"Do not ask for confirmation on non-critical choices; pick defaults and proceed.",
 			"If the user requests writing/saving a local file, you MUST use write_file (preferred) or bash to actually write it; do not claim you wrote a file unless you called a tool to do so.",
 			"Use the available tools when needed.",
 			"You MUST NOT ask the user to paste API keys/tokens/passwords or any secrets. Use tool-side credential injection (e.g. url_fetch.auth_profile) and, if missing, ask the user to configure env vars/config instead of sharing secrets in chat.",
