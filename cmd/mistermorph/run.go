@@ -82,6 +82,30 @@ func newRunCmd() *cobra.Command {
 				return err
 			}
 
+			if flagOrViperBool(cmd, "inspect-request", "") {
+				inspector, err := newRequestInspector(task)
+				if err != nil {
+					return err
+				}
+				defer func() { _ = inspector.Close() }()
+				setter, ok := client.(interface {
+					SetDebugFn(func(label, payload string))
+				})
+				if !ok {
+					return fmt.Errorf("inspect-request requires uniai provider client")
+				}
+				setter.SetDebugFn(inspector.Dump)
+			}
+
+			if flagOrViperBool(cmd, "inspect-prompt", "") {
+				inspector, err := newPromptInspector(task)
+				if err != nil {
+					return err
+				}
+				defer func() { _ = inspector.Close() }()
+				client = &inspectClient{base: client, inspector: inspector}
+			}
+
 			var hook agent.Hook
 			if flagOrViperBool(cmd, "interactive", "interactive") {
 				hook, err = newInteractiveHook()
@@ -142,6 +166,8 @@ func newRunCmd() *cobra.Command {
 	cmd.Flags().String("api-key", "", "API key.")
 	cmd.Flags().Duration("llm-request-timeout", 90*time.Second, "Per-LLM HTTP request timeout (0 uses provider default).")
 	cmd.Flags().Bool("interactive", false, "Ctrl-C pauses and lets you inject extra context, then continues.")
+	cmd.Flags().Bool("inspect-prompt", false, "Dump prompts (messages) to ./dump/prompt_YYYYMMDD_HHmm.md.")
+	cmd.Flags().Bool("inspect-request", false, "Dump LLM request/response payloads to ./dump/request_YYYYMMDD_HHmm.md.")
 	cmd.Flags().StringArray("skills-dir", nil, "Skills root directory (repeatable). Defaults: ~/.codex/skills, ~/.claude/skills")
 	cmd.Flags().StringArray("skill", nil, "Skill(s) to load by name or id (repeatable).")
 	cmd.Flags().Bool("skills-auto", true, "Auto-load skills referenced in task via $SkillName.")
@@ -198,6 +224,7 @@ func llmClientFromConfig(cfg llmClientConfig) (llm.Client, error) {
 			AwsSecret:          firstNonEmpty(viper.GetString("llm.bedrock.aws_secret"), viper.GetString("llm.aws.secret")),
 			AwsRegion:          firstNonEmpty(viper.GetString("llm.bedrock.region"), viper.GetString("llm.aws.region")),
 			AwsBedrockModelArn: firstNonEmpty(viper.GetString("llm.bedrock.model_arn"), viper.GetString("llm.aws.bedrock_model_arn")),
+			Debug:              true,
 		})
 		return c, nil
 	default:

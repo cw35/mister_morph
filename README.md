@@ -111,6 +111,26 @@ Notes:
 
 If you enable the resident scheduler (`scheduler.enabled=true`), the agent can create persistent cron/interval jobs via the internal tools: `schedule_job`, `list_jobs`, `search_jobs`, and `unschedule_job`. For one-shot reminders, set `run_once=true`. To deliver scheduled run results back into Telegram, set `notify_telegram_chat_id` when scheduling.
 
+## Debug
+
+### Logging
+
+There is an argument `--log-level` set for logging level and format:
+
+```bash
+./bin/mistermorph run --log-level debug --task "..."
+```
+
+### Dump internal trace
+
+there is 2 arguments `--inspect-prompt`/`--inspect-request` for dumping internal state for debugging:
+
+```bash
+./bin/mistermorph run --inspect-prompt --inspect-request --task "..."
+```
+
+These arguments will dump the final system/user/tool prompts and the full LLM request/response JSON as plain text files to `./dump` directory. 
+
 ## Configuration
 
 `mistermorph` uses Viper, so you can configure it via flags, env vars, or a config file.
@@ -118,6 +138,7 @@ If you enable the resident scheduler (`scheduler.enabled=true`), the agent can c
 - Config file: `--config /path/to/config.yaml` (supports `.yaml/.yml/.json/.toml/.ini`)
 - Env var prefix: `MISTER_MORPH_`
 - Nested keys: replace `.` and `-` with `_` (e.g. `tools.bash.enabled` → `MISTER_MORPH_TOOLS_BASH_ENABLED=true`)
+
 
 ### CLI flags
 
@@ -157,6 +178,8 @@ If you enable the resident scheduler (`scheduler.enabled=true`), the agent can c
 - `--max-token-budget`
 - `--plan-mode` (`off|auto|always`)
 - `--timeout`
+- `--inspect-prompt`
+- `--inspect-request`
 
 **serve**
 - `--server-bind`

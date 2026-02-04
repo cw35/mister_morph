@@ -4,3 +4,5 @@ mistermorph
 config.yaml
 
 .ai
+go.work
+go.work.sum

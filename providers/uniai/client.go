@@ -30,6 +30,8 @@ type Config struct {
 	AwsSecret          string
 	AwsRegion          string
 	AwsBedrockModelArn string
+
+	Debug bool
 }
 
 type Client struct {
@@ -37,6 +39,7 @@ type Client struct {
 	requestTimeout time.Duration
 	toolsEmulation bool
 	client         *uniaiapi.Client
+	debugFn        func(label, payload string)
 }
 
 func New(cfg Config) *Client {
@@ -76,6 +79,8 @@ func New(cfg Config) *Client {
 		SusanooAPIKey:       strings.TrimSpace(susanooKey),
 		GeminiAPIKey:        strings.TrimSpace(geminiKey),
 		GeminiAPIBase:       strings.TrimSpace(geminiBase),
+
+		Debug: cfg.Debug,
 	}
 
 	return &Client{
@@ -94,10 +99,10 @@ func (c *Client) Chat(ctx context.Context, req llm.Request) (llm.Result, error) 
 		defer cancel()
 	}
 
-	opts := buildChatOptions(req, c.provider, true, c.toolsEmulation)
+	opts := buildChatOptions(req, c.provider, true, c.toolsEmulation, c.debugFn)
 	resp, err := c.client.Chat(ctx, opts...)
 	if err != nil && req.ForceJSON && shouldRetryWithoutResponseFormat(err) {
-		opts = buildChatOptions(req, c.provider, false, c.toolsEmulation)
+		opts = buildChatOptions(req, c.provider, false, c.toolsEmulation, c.debugFn)
 		resp, err = c.client.Chat(ctx, opts...)
 	}
 	if err != nil {
@@ -121,7 +126,7 @@ func (c *Client) Chat(ctx context.Context, req llm.Request) (llm.Result, error) 
 	}, nil
 }
 
-func buildChatOptions(req llm.Request, provider string, forceJSON bool, toolsEmulation bool) []uniaiapi.ChatOption {
+func buildChatOptions(req llm.Request, provider string, forceJSON bool, toolsEmulation bool, debugFn func(label, payload string)) []uniaiapi.ChatOption {
 	msgs := make([]uniaiapi.Message, len(req.Messages))
 	for i, m := range req.Messages {
 		msg := uniaiapi.Message{Role: m.Role, Content: m.Content}
@@ -199,7 +204,15 @@ func buildChatOptions(req llm.Request, provider string, forceJSON bool, toolsEmu
 		}))
 	}
 
+	if debugFn != nil {
+		opts = append(opts, uniaiapi.WithDebugFn(debugFn))
+	}
+
 	return opts
+}
+
+func (c *Client) SetDebugFn(fn func(label, payload string)) {
+	c.debugFn = fn
 }
 
 func toLLMToolCalls(calls []uniaiapi.ToolCall) []llm.ToolCall {
