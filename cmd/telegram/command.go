@@ -938,7 +938,7 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	// Underscores in identifiers like "new_york" will render as italics unless the model wraps them in
 	// backticks. Give the model a channel-specific reminder.
 	promptSpec.Rules = append(promptSpec.Rules,
-		"In your final.output string, write for Telegram Markdown (prefer MarkdownV2). Wrap identifiers/params/paths (especially anything containing '_' like `new_york`) in backticks so they render correctly. Avoid using underscores for italics; use *...* if you need emphasis.",
+		"In your final.output string, write for Telegram MarkdownV2 with LIMITED syntax only: *bold*, _italic_, __underline__, ~strikethrough~, ||spoiler||. Avoid inline code, code blocks, or any other Markdown features. If unsure, output plain text. Escape underscores in identifiers (e.g., new\\_york) instead of using backticks.",
 	)
 	promptSpec.Rules = append(promptSpec.Rules,
 		"If you need to send a Telegram voice message: call telegram_send_voice. If you do not already have a voice file path, do NOT ask the user for one; instead call telegram_send_voice without path and provide a short `text` to synthesize from the current context.",
@@ -1955,11 +1955,8 @@ func (api *telegramAPI) sendMessage(ctx context.Context, chatID int64, text stri
 	// "new_york" which would otherwise render as italics. Escape underscores outside code spans/blocks.
 	text = escapeTelegramMarkdownUnderscores(text)
 
-	// Telegram Markdown can be picky; try richer formatting first, then fall back to plain text.
+	// Telegram MarkdownV2 can be picky; fall back to plain text on failure.
 	if err := api.sendMessageWithParseMode(ctx, chatID, text, disablePreview, "MarkdownV2"); err == nil {
-		return nil
-	}
-	if err := api.sendMessageWithParseMode(ctx, chatID, text, disablePreview, "Markdown"); err == nil {
 		return nil
 	}
 	return api.sendMessageWithParseMode(ctx, chatID, text, disablePreview, "")
