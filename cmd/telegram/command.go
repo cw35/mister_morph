@@ -1416,10 +1416,13 @@ func SemanticMergeShortTerm(ctx context.Context, client llm.Client, model string
 			"Prefer a single canonical title when multiple entries describe the same topic.",
 			"Preserve all concrete details when merging; do not lose facts from incoming or existing items.",
 			"Merge overlapping link lists into one list (dedupe URLs).",
+			"Within a Session Summary value, each key (Users/Datetime/Event/Result) must appear at most once.",
+			"Within a Temporary Facts value, do not repeat the same key or URL.",
 			"Prefer the most recent information when conflicts occur.",
 			"Preserve important metadata in temporary_facts such as URLs, terms, identifiers, IDs, or ticket numbers.",
 			"Keep items concise.",
-			"Tasks: if a task appears in both, keep the latest done status.",
+			"Tasks/Follow-ups: merge duplicates even if wording differs; keep one canonical item.",
+			"If any duplicate is done=true, the merged item must be done=true.",
 			"If unsure, keep the existing item and add the new one only if distinct.",
 		},
 	}
@@ -1466,6 +1469,8 @@ func SemanticMergeShortTerm(ctx context.Context, client llm.Client, model string
 	merged.FollowUps = applyTaskUpdatesSemantic(ctx, client, model, merged.FollowUps, draft.FollowUps)
 	merged = repairSemanticMerge(existing, draft, merged)
 	merged = memory.NormalizeShortTermContent(merged)
+	merged.Tasks = semanticDedupTaskItems(ctx, client, model, merged.Tasks)
+	merged.FollowUps = semanticDedupTaskItems(ctx, client, model, merged.FollowUps)
 	summary := strings.TrimSpace(out.Summary)
 	if summary == "" {
 		summary = strings.TrimSpace(draft.Summary)
@@ -1583,6 +1588,10 @@ type taskMatchResponse struct {
 	Matches []taskMatch `json:"matches"`
 }
 
+type taskDedupResponse struct {
+	Tasks []memory.TaskItem `json:"tasks"`
+}
+
 func semanticMatchTasks(ctx context.Context, client llm.Client, model string, base []memory.TaskItem, updates []memory.TaskItem) []taskMatch {
 	if client == nil || len(base) == 0 || len(updates) == 0 {
 		return nil
@@ -1621,6 +1630,57 @@ func semanticMatchTasks(ctx context.Context, client llm.Client, model string, ba
 		return nil
 	}
 	return out.Matches
+}
+
+func semanticDedupTaskItems(ctx context.Context, client llm.Client, model string, items []memory.TaskItem) []memory.TaskItem {
+	if client == nil || len(items) == 0 {
+		return items
+	}
+	payload := map[string]any{
+		"tasks": items,
+		"rules": []string{
+			"Merge duplicate tasks even if wording differs.",
+			"Keep one canonical task per meaning.",
+			"If any duplicate is done=true, the merged task must be done=true.",
+			"Do not invent new tasks.",
+		},
+	}
+	b, _ := json.Marshal(payload)
+	sys := "You deduplicate tasks semantically. Return ONLY JSON: {\"tasks\":[{\"text\":string,\"done\":bool}]}."
+	res, err := client.Chat(ctx, llm.Request{
+		Model:     model,
+		ForceJSON: true,
+		Messages: []llm.Message{
+			{Role: "system", Content: sys},
+			{Role: "user", Content: string(b)},
+		},
+		Parameters: map[string]any{
+			"max_tokens": 1200,
+		},
+	})
+	if err != nil {
+		return items
+	}
+	raw := strings.TrimSpace(res.Text)
+	if raw == "" {
+		return items
+	}
+	var out taskDedupResponse
+	if err := jsonutil.DecodeWithFallback(raw, &out); err != nil {
+		return items
+	}
+	normalized := make([]memory.TaskItem, 0, len(out.Tasks))
+	for _, it := range out.Tasks {
+		text := strings.TrimSpace(it.Text)
+		if text == "" {
+			continue
+		}
+		normalized = append(normalized, memory.TaskItem{Text: text, Done: it.Done})
+	}
+	if len(normalized) == 0 && len(items) > 0 {
+		return items
+	}
+	return normalized
 }
 
 func buildMemoryContextMessages(history []llm.Message, task string, output string) []map[string]string {
