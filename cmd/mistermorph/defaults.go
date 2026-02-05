@@ -52,6 +52,19 @@ func initViperDefaults() {
 	viper.SetDefault("telegram.smart_addressing_max_chars", 24)
 	viper.SetDefault("telegram.smart_addressing_confidence", 0.55)
 	viper.SetDefault("telegram.max_concurrency", 3)
+	viper.SetDefault("telegram.reactions.enabled", true)
+	viper.SetDefault("telegram.reactions.allow", []string{
+		"\u2705",
+		"\U0001F44D",
+		"\U0001F440",
+		"\U0001F389",
+		"\U0001F64F",
+		"\U0001F44E",
+		"\U0001F44C",
+		"\u2757",
+		"\U0001F60A",
+	})
+	viper.SetDefault("telegram.reactions.max_per_message", 1)
 
 	// Heartbeat
 	viper.SetDefault("heartbeat.enabled", true)

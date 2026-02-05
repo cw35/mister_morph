@@ -30,10 +30,10 @@ func NormalizeFileCacheDirPath(p string) string {
 		return p
 	}
 	trimmed := strings.TrimLeft(p, "/\\")
-	trimmed = strings.TrimPrefix(trimmed, "file_cache_dir/")
-	trimmed = strings.TrimPrefix(trimmed, "file_cache_dir\\")
-	if trimmed == p {
-		return p
+	if strings.HasPrefix(trimmed, "file_cache_dir/") || strings.HasPrefix(trimmed, "file_cache_dir\\") {
+		trimmed = strings.TrimPrefix(trimmed, "file_cache_dir/")
+		trimmed = strings.TrimPrefix(trimmed, "file_cache_dir\\")
+		return strings.TrimLeft(trimmed, "/\\")
 	}
-	return strings.TrimLeft(trimmed, "/\\")
+	return p
 }

@@ -132,6 +132,8 @@ func newTelegramCmd() *cobra.Command {
 				historyMax = 20
 			}
 
+			reactionCfg := readTelegramReactionConfig()
+
 			httpClient := &http.Client{Timeout: 60 * time.Second}
 			api := newTelegramAPI(httpClient, baseURL, token)
 
@@ -218,6 +220,9 @@ func newTelegramCmd() *cobra.Command {
 				"task_timeout", taskTimeout.String(),
 				"max_concurrency", maxConc,
 				"history_max_messages", historyMax,
+				"reactions_enabled", reactionCfg.Enabled,
+				"reactions_allow_count", len(reactionCfg.Allow),
+				"reactions_max_per_message", reactionCfg.MaxPerMessage,
 				"group_trigger_mode", groupTriggerMode,
 				"smart_addressing_max_chars", smartAddressingMaxChars,
 				"smart_addressing_confidence", smartAddressingConfidence,
@@ -341,7 +346,7 @@ func newTelegramCmd() *cobra.Command {
 							}
 
 							ctx, cancel := context.WithTimeout(context.Background(), taskTimeout)
-							final, _, loadedSkills, runErr := runTelegramTask(ctx, logger, logOpts, client, reg, api, filesEnabled, fileCacheDir, filesMaxBytes, sharedGuard, cfg, job, model, h, sticky)
+							final, _, loadedSkills, reaction, runErr := runTelegramTask(ctx, logger, logOpts, client, reg, api, filesEnabled, fileCacheDir, filesMaxBytes, sharedGuard, cfg, reactionCfg, allowed, job, model, h, sticky)
 							cancel()
 
 							if runErr != nil {
@@ -373,19 +378,30 @@ func newTelegramCmd() *cobra.Command {
 								return
 							}
 
-							outText := formatFinalOutput(final)
-							if job.IsHeartbeat {
-								mu.Lock()
-								heartbeatRunning[chatID] = false
-								heartbeatFailures[chatID] = 0
-								lastHeartbeat[chatID] = time.Now()
-								mu.Unlock()
-								if err := api.sendMessageChunked(context.Background(), chatID, outText); err != nil {
-									logger.Warn("telegram_send_error", "error", err.Error())
+							var outText string
+							if reaction == nil {
+								outText = formatFinalOutput(final)
+								if job.IsHeartbeat {
+									mu.Lock()
+									heartbeatRunning[chatID] = false
+									heartbeatFailures[chatID] = 0
+									lastHeartbeat[chatID] = time.Now()
+									mu.Unlock()
+									if err := api.sendMessageChunked(context.Background(), chatID, outText); err != nil {
+										logger.Warn("telegram_send_error", "error", err.Error())
+									}
+								} else {
+									if err := api.sendMessageChunked(context.Background(), chatID, outText); err != nil {
+										logger.Warn("telegram_send_error", "error", err.Error())
+									}
 								}
 							} else {
-								if err := api.sendMessageChunked(context.Background(), chatID, outText); err != nil {
-									logger.Warn("telegram_send_error", "error", err.Error())
+								if job.IsHeartbeat {
+									mu.Lock()
+									heartbeatRunning[chatID] = false
+									heartbeatFailures[chatID] = 0
+									lastHeartbeat[chatID] = time.Now()
+									mu.Unlock()
 								}
 							}
 
@@ -404,7 +420,15 @@ func newTelegramCmd() *cobra.Command {
 							}
 							cur := history[chatID]
 							if job.IsHeartbeat {
-								cur = append(cur, llm.Message{Role: "assistant", Content: outText})
+								if reaction == nil {
+									cur = append(cur, llm.Message{Role: "assistant", Content: outText})
+								}
+							} else if reaction != nil {
+								note := reactionHistoryNote(reaction.Emoji)
+								cur = append(cur,
+									llm.Message{Role: "user", Content: job.Text},
+									llm.Message{Role: "assistant", Content: note},
+								)
 							} else {
 								cur = append(cur,
 									llm.Message{Role: "user", Content: job.Text},
@@ -842,10 +866,57 @@ func newTelegramCmd() *cobra.Command {
 	return cmd
 }
 
-func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, api *telegramAPI, filesEnabled bool, fileCacheDir string, filesMaxBytes int64, sharedGuard *guard.Guard, cfg agent.Config, job telegramJob, model string, history []llm.Message, stickySkills []string) (*agent.Final, *agent.Context, []string, error) {
+func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, api *telegramAPI, filesEnabled bool, fileCacheDir string, filesMaxBytes int64, sharedGuard *guard.Guard, cfg agent.Config, reactionCfg telegramReactionConfig, allowedIDs map[int64]bool, job telegramJob, model string, history []llm.Message, stickySkills []string) (*agent.Final, *agent.Context, []string, *telegramReaction, error) {
 	task := job.Text
 	if baseReg == nil {
 		baseReg = registryFromViper()
+	}
+
+	var decision telegramReactionDecision
+	var hasPreIntent bool
+	var preIntent agent.Intent
+	if !job.IsHeartbeat && api != nil && job.MessageID != 0 && strings.TrimSpace(task) != "" && reactionCfg.Enabled {
+		dec, err := decideTelegramReaction(ctx, client, model, task, history, cfg, reactionCfg)
+		if err != nil {
+			if logger != nil {
+				logger.Warn("telegram_reaction_intent_error", "error", err.Error())
+			}
+		}
+		decision = dec
+		if decision.HasIntent && !decision.Intent.Empty() {
+			hasPreIntent = true
+			preIntent = decision.Intent
+		}
+		if decision.ShouldReact {
+			emoji := decision.Emoji
+			if emoji == "" {
+				emoji = pickReactionEmoji(decision.Category, reactionCfg.Allow)
+			}
+			if strings.TrimSpace(emoji) != "" {
+				if err := api.setMessageReaction(ctx, job.ChatID, job.MessageID, []telegramReactionType{
+					{Type: "emoji", Emoji: emoji},
+				}, nil); err == nil {
+					reaction := &telegramReaction{
+						ChatID:    job.ChatID,
+						MessageID: job.MessageID,
+						Emoji:     emoji,
+						Source:    "preflight",
+					}
+					if logger != nil {
+						logger.Info("telegram_reaction_applied",
+							"chat_id", job.ChatID,
+							"message_id", job.MessageID,
+							"emoji", emoji,
+							"source", reaction.Source,
+							"reason", decision.Reason,
+						)
+					}
+					return nil, nil, nil, reaction, nil
+				} else if logger != nil {
+					logger.Warn("telegram_reaction_error", "error", err.Error())
+				}
+			}
+		}
 	}
 
 	// Per-run registry.
@@ -858,10 +929,15 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	if filesEnabled && api != nil {
 		reg.Register(newTelegramSendFileTool(api, job.ChatID, fileCacheDir, filesMaxBytes))
 	}
+	var reactTool *telegramReactTool
+	if reactionCfg.Enabled && api != nil && job.MessageID != 0 {
+		reactTool = newTelegramReactTool(api, job.ChatID, job.MessageID, allowedIDs, reactionCfg.Allow)
+		reg.Register(reactTool)
+	}
 
 	promptSpec, loadedSkills, skillAuthProfiles, err := promptSpecForTelegram(ctx, logger, logOpts, task, client, model, stickySkills)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	// Telegram replies are rendered using Telegram Markdown (MarkdownV2 first; fallback to Markdown/plain).
@@ -873,6 +949,16 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	promptSpec.Rules = append(promptSpec.Rules,
 		"If you need to send a Telegram voice message: call telegram_send_voice. If you do not already have a voice file path, do NOT ask the user for one; instead call telegram_send_voice without path and provide a short `text` to synthesize from the current context.",
 	)
+	if reactionCfg.Enabled {
+		promptSpec.Rules = append(promptSpec.Rules,
+			"If a lightweight emoji reaction is sufficient, call telegram_react and do NOT send an extra text reply.",
+		)
+	}
+
+	if hasPreIntent {
+		promptSpec.Blocks = append(promptSpec.Blocks, agent.IntentBlock(preIntent))
+		cfg.IntentEnabled = false
+	}
 
 	var memManager *memory.Manager
 	var memIdentity memory.Identity
@@ -883,7 +969,7 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 		}
 		id, err := (&memory.Resolver{}).ResolveTelegram(ctx, job.FromUserID)
 		if err != nil {
-			return nil, nil, loadedSkills, fmt.Errorf("memory identity: %w", err)
+			return nil, nil, loadedSkills, nil, fmt.Errorf("memory identity: %w", err)
 		}
 		if id.Enabled && strings.TrimSpace(id.SubjectID) != "" {
 			memIdentity = id
@@ -892,7 +978,7 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 				maxItems := viper.GetInt("memory.injection.max_items")
 				snap, err := memManager.BuildInjection(id.SubjectID, memReqCtx, maxItems)
 				if err != nil {
-					return nil, nil, loadedSkills, fmt.Errorf("memory injection: %w", err)
+					return nil, nil, loadedSkills, nil, fmt.Errorf("memory injection: %w", err)
 				}
 				if strings.TrimSpace(snap) != "" {
 					promptSpec.Blocks = append(promptSpec.Blocks, agent.PromptBlock{
@@ -952,15 +1038,28 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	}
 	final, agentCtx, err := engine.Run(ctx, task, agent.RunOptions{Model: model, History: history, Meta: meta})
 	if err != nil {
-		return final, agentCtx, loadedSkills, err
+		return final, agentCtx, loadedSkills, nil, err
 	}
 
-	if !job.IsHeartbeat && memManager != nil && memIdentity.Enabled && strings.TrimSpace(memIdentity.SubjectID) != "" {
+	var reaction *telegramReaction
+	if reactTool != nil {
+		reaction = reactTool.LastReaction()
+		if reaction != nil && logger != nil {
+			logger.Info("telegram_reaction_applied",
+				"chat_id", reaction.ChatID,
+				"message_id", reaction.MessageID,
+				"emoji", reaction.Emoji,
+				"source", reaction.Source,
+			)
+		}
+	}
+
+	if reaction == nil && !job.IsHeartbeat && memManager != nil && memIdentity.Enabled && strings.TrimSpace(memIdentity.SubjectID) != "" {
 		if err := updateTelegramMemory(ctx, logger, client, model, memManager, memIdentity, job, history, final); err != nil {
 			logger.Warn("memory_update_error", "error", err.Error())
 		}
 	}
-	return final, agentCtx, loadedSkills, nil
+	return final, agentCtx, loadedSkills, reaction, nil
 }
 
 func generateTelegramPlanProgressMessage(ctx context.Context, client llm.Client, model string, task string, plan *agent.Plan, update agent.PlanStepUpdate) (string, error) {
@@ -1831,6 +1930,19 @@ type telegramSendChatActionRequest struct {
 	Action string `json:"action"`
 }
 
+type telegramReactionType struct {
+	Type          string `json:"type"`
+	Emoji         string `json:"emoji,omitempty"`
+	CustomEmojiID string `json:"custom_emoji_id,omitempty"`
+}
+
+type telegramSetMessageReactionRequest struct {
+	ChatID    int64                  `json:"chat_id"`
+	MessageID int64                  `json:"message_id"`
+	Reaction  []telegramReactionType `json:"reaction,omitempty"`
+	IsBig     *bool                  `json:"is_big,omitempty"`
+}
+
 type telegramOKResponse struct {
 	OK bool `json:"ok"`
 }
@@ -2193,6 +2305,42 @@ func (api *telegramAPI) sendVoice(ctx context.Context, chatID int64, filePath st
 	_ = json.Unmarshal(raw, &ok)
 	if !ok.OK {
 		return fmt.Errorf("telegram sendVoice: ok=false")
+	}
+	return nil
+}
+
+func (api *telegramAPI) setMessageReaction(ctx context.Context, chatID int64, messageID int64, reactions []telegramReactionType, isBig *bool) error {
+	if messageID == 0 {
+		return fmt.Errorf("missing message_id")
+	}
+	reqBody := telegramSetMessageReactionRequest{
+		ChatID:    chatID,
+		MessageID: messageID,
+		Reaction:  reactions,
+		IsBig:     isBig,
+	}
+	b, _ := json.Marshal(reqBody)
+
+	url := fmt.Sprintf("%s/bot%s/setMessageReaction", api.baseURL, api.token)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := api.http.Do(req)
+	if err != nil {
+		return err
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("telegram http %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+	var ok telegramOKResponse
+	_ = json.Unmarshal(raw, &ok)
+	if !ok.OK {
+		return fmt.Errorf("telegram setMessageReaction: ok=false")
 	}
 	return nil
 }

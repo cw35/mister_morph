@@ -276,6 +276,22 @@ telegram:
   max_concurrency: 3
   # Max chat history messages kept per chat.
   history_max_messages: 20
+  # Emoji reactions (lightweight replies).
+  reactions:
+    enabled: true
+    # Allowed reaction emoji list (Telegram emoji). Empty uses defaults.
+    allow:
+      - "\u2705"
+      - "\U0001F44D"
+      - "\U0001F440"
+      - "\U0001F389"
+      - "\U0001F64F"
+      - "\U0001F44E"
+      - "\U0001F44C"
+      - "\u2757"
+      - "\U0001F60A"
+    # Max emoji reactions per message (default 1).
+    max_per_message: 1
   # Note: file handling is always enabled; files are downloaded under file_cache_dir/telegram/ (max size is hardcoded).
 
 # Heartbeat (periodic awareness/checkpoint).
