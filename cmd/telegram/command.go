@@ -1465,6 +1465,7 @@ func SemanticMergeShortTerm(ctx context.Context, client llm.Client, model string
 	merged.Tasks = applyTaskUpdatesSemantic(ctx, client, model, merged.Tasks, draft.Tasks)
 	merged.FollowUps = applyTaskUpdatesSemantic(ctx, client, model, merged.FollowUps, draft.FollowUps)
 	merged = repairSemanticMerge(existing, draft, merged)
+	merged = memory.NormalizeShortTermContent(merged)
 	summary := strings.TrimSpace(out.Summary)
 	if summary == "" {
 		summary = strings.TrimSpace(draft.Summary)

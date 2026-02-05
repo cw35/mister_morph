@@ -46,13 +46,14 @@ func MergeShortTerm(existing ShortTermContent, draft SessionDraft) ShortTermCont
 	incomingTasks := normalizeTasks(draft.Tasks)
 	incomingFollowUps := normalizeTasks(draft.FollowUps)
 
-	return ShortTermContent{
+	merged := ShortTermContent{
 		SessionSummary: MergeSessionSummary(existing.SessionSummary, incomingSummary),
 		TemporaryFacts: MergeTemporaryFacts(existing.TemporaryFacts, incomingFacts),
 		Tasks:          mergeTasks(existing.Tasks, incomingTasks),
 		FollowUps:      mergeTasks(existing.FollowUps, incomingFollowUps),
 		RelatedLinks:   mergeLinks(existing.RelatedLinks, nil),
 	}
+	return NormalizeShortTermContent(merged)
 }
 
 // MergeSessionSummary merges session summary items with fuzzy title matching.
@@ -78,6 +79,28 @@ func MergeLongTerm(existing LongTermContent, draft PromoteDraft, now time.Time) 
 		Goals: mergeLongTermKV(existing.Goals, incomingGoals, date),
 		Facts: mergeLongTermKV(existing.Facts, incomingFacts, date),
 	}
+}
+
+// NormalizeShortTermContent deduplicates repeated key lines within session summary
+// and temporary facts values after merges.
+func NormalizeShortTermContent(content ShortTermContent) ShortTermContent {
+	if len(content.SessionSummary) > 0 {
+		out := make([]KVItem, 0, len(content.SessionSummary))
+		for _, it := range content.SessionSummary {
+			val := dedupeSessionSummaryValue(it.Value)
+			out = append(out, KVItem{Title: it.Title, Value: val})
+		}
+		content.SessionSummary = out
+	}
+	if len(content.TemporaryFacts) > 0 {
+		out := make([]KVItem, 0, len(content.TemporaryFacts))
+		for _, it := range content.TemporaryFacts {
+			val := dedupeKVValueLines(it.Value)
+			out = append(out, KVItem{Title: it.Title, Value: val})
+		}
+		content.TemporaryFacts = out
+	}
+	return content
 }
 
 func BuildShortTermBody(date string, content ShortTermContent) string {
@@ -654,6 +677,54 @@ func parseSummaryLines(value string) (map[string]string, []string) {
 	return out, order
 }
 
+func dedupeSessionSummaryValue(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return value
+	}
+	lines := strings.Split(value, "\n")
+	merged := make(map[string]string, len(lines))
+	order := make([]string, 0, len(lines))
+	var extras []string
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		key, val, ok := splitSummaryLine(line)
+		if !ok {
+			extras = append(extras, line)
+			continue
+		}
+		if _, seen := merged[key]; !seen {
+			order = append(order, key)
+		}
+		merged[key] = mergeSummaryField(key, merged[key], val)
+	}
+	if len(order) == 0 {
+		return strings.TrimSpace(strings.Join(extras, "\n"))
+	}
+	var b strings.Builder
+	for _, k := range order {
+		val := strings.TrimSpace(merged[k])
+		if val == "" {
+			continue
+		}
+		b.WriteString(k)
+		b.WriteString(": ")
+		b.WriteString(val)
+		b.WriteString("\n")
+	}
+	for _, extra := range extras {
+		if strings.TrimSpace(extra) == "" {
+			continue
+		}
+		b.WriteString(extra)
+		b.WriteString("\n")
+	}
+	return strings.TrimSpace(b.String())
+}
+
 func splitSummaryLine(line string) (string, string, bool) {
 	if line == "" {
 		return "", "", false
@@ -802,6 +873,38 @@ func parseValueLines(val string) []valueLine {
 		out = append(out, valueLine{Text: text, Key: plain, URL: url})
 	}
 	return out
+}
+
+func dedupeKVValueLines(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return value
+	}
+	lines := parseValueLines(value)
+	seen := map[string]bool{}
+	seenURL := map[string]bool{}
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		key := strings.ToLower(strings.TrimSpace(line.Key))
+		if key == "" {
+			continue
+		}
+		if seen[key] {
+			continue
+		}
+		if line.URL != "" && seenURL[line.URL] {
+			continue
+		}
+		seen[key] = true
+		if line.URL != "" {
+			seenURL[line.URL] = true
+		}
+		out = append(out, line.Text)
+	}
+	if len(out) == 0 {
+		return value
+	}
+	return strings.TrimSpace(strings.Join(out, "\n"))
 }
 
 func mergeLongTermKV(existing []KVItem, incoming []KVItem, date string) []KVItem {
