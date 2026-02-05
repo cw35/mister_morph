@@ -1401,8 +1401,8 @@ func SemanticMergeShortTerm(ctx context.Context, client llm.Client, model string
 			"Short-term memory is public. Do NOT include private or sensitive info.",
 			"Session summary title is the topic name; value is newline-separated key-value lines (Users/Datetime/Event/Result).",
 			"Temporary facts title is the fact group name; value is newline-separated key-value lines.",
-			"Do NOT delete or rename existing items. Output must include all existing items by the same title/text.",
-			"Only update an existing item if incoming includes the same title/text. Otherwise keep it unchanged.",
+			"You may merge items with overlapping meaning; prefer the most representative existing title.",
+			"Preserve all concrete details when merging; do not lose facts from incoming or existing items.",
 			"Prefer the most recent information when conflicts occur.",
 			"Preserve important metadata in temporary_facts such as URLs, terms, identifiers, IDs, or ticket numbers.",
 			"Keep items concise.",
@@ -1441,9 +1441,6 @@ func SemanticMergeShortTerm(ctx context.Context, client llm.Client, model string
 	if err := jsonutil.DecodeWithFallback(raw, &out); err != nil {
 		return memory.ShortTermContent{}, "", fmt.Errorf("invalid semantic merge json")
 	}
-	if !semanticMergeIncludesDraft(draft, out) {
-		return memory.ShortTermContent{}, "", fmt.Errorf("semantic merge missing draft content")
-	}
 
 	merged := memory.ShortTermContent{
 		SessionSummary: out.SessionSummary,
@@ -1462,128 +1459,113 @@ func SemanticMergeShortTerm(ctx context.Context, client llm.Client, model string
 	return merged, summary, nil
 }
 
-func semanticMergeIncludesDraft(draft memory.SessionDraft, out semanticMergeResult) bool {
-	if !containsAllKV(draft.SessionSummary, out.SessionSummary) {
-		return false
-	}
-	if !containsAllKV(draft.TemporaryFacts, out.TemporaryFacts) {
-		return false
-	}
-	if !containsAllTasks(draft.Tasks, out.Tasks) {
-		return false
-	}
-	if !containsAllTasks(draft.FollowUps, out.FollowUps) {
-		return false
-	}
-	return true
-}
-
-func containsAllKV(required []memory.KVItem, actual []memory.KVItem) bool {
-	if len(required) == 0 {
-		return true
-	}
-	keys := make(map[string]bool, len(actual))
-	for _, it := range actual {
-		key := normalizeKVTitle(it.Title)
-		if key == "" {
-			continue
-		}
-		keys[key] = true
-	}
-	for _, it := range required {
-		key := normalizeKVTitle(it.Title)
-		if key == "" {
-			continue
-		}
-		if !keys[key] {
-			return false
-		}
-	}
-	return true
-}
-
-func containsAllTasks(required []memory.TaskItem, actual []memory.TaskItem) bool {
-	if len(required) == 0 {
-		return true
-	}
-	keys := make(map[string]bool, len(actual))
-	for _, it := range actual {
-		key := normalizeTaskText(it.Text)
-		if key == "" {
-			continue
-		}
-		keys[key] = true
-	}
-	for _, it := range required {
-		key := normalizeTaskText(it.Text)
-		if key == "" {
-			continue
-		}
-		if !keys[key] {
-			return false
-		}
-	}
-	return true
-}
-
 func repairSemanticMerge(existing memory.ShortTermContent, draft memory.SessionDraft, merged memory.ShortTermContent) memory.ShortTermContent {
-	filtered := memory.SessionDraft{
-		SessionSummary: filterMergeKV(draft.SessionSummary, merged.SessionSummary),
-		TemporaryFacts: filterMergeKV(draft.TemporaryFacts, merged.TemporaryFacts),
-		Tasks:          filterMergeTasks(draft.Tasks, merged.Tasks),
-		FollowUps:      filterMergeTasks(draft.FollowUps, merged.FollowUps),
-	}
-	return memory.MergeShortTerm(existing, filtered)
+	merged.SessionSummary = ensureMergedKV(existing.SessionSummary, draft.SessionSummary, merged.SessionSummary)
+	merged.TemporaryFacts = ensureMergedKV(existing.TemporaryFacts, draft.TemporaryFacts, merged.TemporaryFacts)
+	merged.Tasks = ensureMergedTasks(existing.Tasks, draft.Tasks, merged.Tasks)
+	merged.FollowUps = ensureMergedTasks(existing.FollowUps, draft.FollowUps, merged.FollowUps)
+	merged.RelatedLinks = existing.RelatedLinks
+	return merged
 }
 
-func filterMergeKV(draft []memory.KVItem, merged []memory.KVItem) []memory.KVItem {
-	if len(merged) == 0 {
-		return nil
-	}
-	draftKeys := make(map[string]bool, len(draft))
-	for _, it := range draft {
-		key := normalizeKVTitle(it.Title)
-		if key != "" {
-			draftKeys[key] = true
+func ensureMergedKV(existing []memory.KVItem, incoming []memory.KVItem, merged []memory.KVItem) []memory.KVItem {
+	out := append([]memory.KVItem(nil), merged...)
+	for _, it := range existing {
+		if !kvItemCovered(it, out) {
+			out = append(out, it)
 		}
 	}
-	out := make([]memory.KVItem, 0, len(merged))
-	for _, it := range merged {
-		key := normalizeKVTitle(it.Title)
-		if key == "" {
-			continue
+	for _, it := range incoming {
+		if !kvItemCovered(it, out) {
+			out = append(out, it)
 		}
-		if !draftKeys[key] {
-			continue
-		}
-		out = append(out, it)
 	}
 	return out
 }
 
-func filterMergeTasks(draft []memory.TaskItem, merged []memory.TaskItem) []memory.TaskItem {
-	if len(merged) == 0 {
-		return nil
+func kvItemCovered(item memory.KVItem, items []memory.KVItem) bool {
+	titleNorm := normalizeMergeText(item.Title)
+	valueNorm := normalizeMergeText(item.Value)
+	valueKey := mergeKeyFragment(valueNorm)
+	titleKey := mergeKeyFragment(titleNorm)
+	if titleNorm == "" && valueNorm == "" {
+		return true
 	}
-	draftKeys := make(map[string]bool, len(draft))
-	for _, it := range draft {
-		key := normalizeTaskText(it.Text)
-		if key != "" {
-			draftKeys[key] = true
+	for _, it := range items {
+		tNorm := normalizeMergeText(it.Title)
+		vNorm := normalizeMergeText(it.Value)
+		joined := tNorm + vNorm
+		if titleNorm != "" && tNorm == titleNorm {
+			return true
+		}
+		if valueKey != "" && strings.Contains(joined, valueKey) {
+			return true
+		}
+		if valueNorm != "" && strings.Contains(joined, valueNorm) {
+			return true
+		}
+		if valueNorm == "" && titleKey != "" && strings.Contains(joined, titleKey) {
+			return true
 		}
 	}
-	out := make([]memory.TaskItem, 0, len(merged))
-	for _, it := range merged {
-		key := normalizeTaskText(it.Text)
-		if key == "" {
-			continue
+	return false
+}
+
+func ensureMergedTasks(existing []memory.TaskItem, incoming []memory.TaskItem, merged []memory.TaskItem) []memory.TaskItem {
+	out := append([]memory.TaskItem(nil), merged...)
+	for _, it := range existing {
+		if !taskItemCovered(it, out) {
+			out = append(out, it)
 		}
-		if !draftKeys[key] {
-			continue
+	}
+	for _, it := range incoming {
+		if !taskItemCovered(it, out) {
+			out = append(out, it)
 		}
-		out = append(out, it)
 	}
 	return out
+}
+
+func taskItemCovered(item memory.TaskItem, items []memory.TaskItem) bool {
+	key := normalizeTaskText(item.Text)
+	if key == "" {
+		return true
+	}
+	for _, it := range items {
+		if normalizeTaskText(it.Text) == key {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeMergeText(text string) string {
+	text = strings.TrimSpace(strings.ToLower(text))
+	if text == "" {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range text {
+		switch {
+		case unicode.IsLetter(r):
+			b.WriteRune(r)
+		case unicode.IsNumber(r):
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func mergeKeyFragment(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	runes := []rune(text)
+	if len(runes) <= 24 {
+		return text
+	}
+	return string(runes[:24])
 }
 
 func HasDraftContent(draft memory.SessionDraft) bool {
