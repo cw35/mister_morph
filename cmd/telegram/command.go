@@ -1401,8 +1401,10 @@ func SemanticMergeShortTerm(ctx context.Context, client llm.Client, model string
 			"Short-term memory is public. Do NOT include private or sensitive info.",
 			"Session summary title is the topic name; value is newline-separated key-value lines (Users/Datetime/Event/Result).",
 			"Temporary facts title is the fact group name; value is newline-separated key-value lines.",
-			"You may merge items with overlapping meaning; prefer the most representative existing title.",
+			"Merge items with overlapping meaning even if titles differ. You may rename titles to unify duplicates.",
+			"Prefer a single canonical title when multiple entries describe the same topic.",
 			"Preserve all concrete details when merging; do not lose facts from incoming or existing items.",
+			"Merge overlapping link lists into one list (dedupe URLs).",
 			"Prefer the most recent information when conflicts occur.",
 			"Preserve important metadata in temporary_facts such as URLs, terms, identifiers, IDs, or ticket numbers.",
 			"Keep items concise.",
@@ -1460,55 +1462,10 @@ func SemanticMergeShortTerm(ctx context.Context, client llm.Client, model string
 }
 
 func repairSemanticMerge(existing memory.ShortTermContent, draft memory.SessionDraft, merged memory.ShortTermContent) memory.ShortTermContent {
-	merged.SessionSummary = ensureMergedKV(existing.SessionSummary, draft.SessionSummary, merged.SessionSummary)
-	merged.TemporaryFacts = ensureMergedKV(existing.TemporaryFacts, draft.TemporaryFacts, merged.TemporaryFacts)
 	merged.Tasks = ensureMergedTasks(existing.Tasks, draft.Tasks, merged.Tasks)
 	merged.FollowUps = ensureMergedTasks(existing.FollowUps, draft.FollowUps, merged.FollowUps)
 	merged.RelatedLinks = existing.RelatedLinks
 	return merged
-}
-
-func ensureMergedKV(existing []memory.KVItem, incoming []memory.KVItem, merged []memory.KVItem) []memory.KVItem {
-	out := append([]memory.KVItem(nil), merged...)
-	for _, it := range existing {
-		if !kvItemCovered(it, out) {
-			out = append(out, it)
-		}
-	}
-	for _, it := range incoming {
-		if !kvItemCovered(it, out) {
-			out = append(out, it)
-		}
-	}
-	return out
-}
-
-func kvItemCovered(item memory.KVItem, items []memory.KVItem) bool {
-	titleNorm := normalizeMergeText(item.Title)
-	valueNorm := normalizeMergeText(item.Value)
-	valueKey := mergeKeyFragment(valueNorm)
-	titleKey := mergeKeyFragment(titleNorm)
-	if titleNorm == "" && valueNorm == "" {
-		return true
-	}
-	for _, it := range items {
-		tNorm := normalizeMergeText(it.Title)
-		vNorm := normalizeMergeText(it.Value)
-		joined := tNorm + vNorm
-		if titleNorm != "" && tNorm == titleNorm {
-			return true
-		}
-		if valueKey != "" && strings.Contains(joined, valueKey) {
-			return true
-		}
-		if valueNorm != "" && strings.Contains(joined, valueNorm) {
-			return true
-		}
-		if valueNorm == "" && titleKey != "" && strings.Contains(joined, titleKey) {
-			return true
-		}
-	}
-	return false
 }
 
 func ensureMergedTasks(existing []memory.TaskItem, incoming []memory.TaskItem, merged []memory.TaskItem) []memory.TaskItem {
@@ -1537,35 +1494,6 @@ func taskItemCovered(item memory.TaskItem, items []memory.TaskItem) bool {
 		}
 	}
 	return false
-}
-
-func normalizeMergeText(text string) string {
-	text = strings.TrimSpace(strings.ToLower(text))
-	if text == "" {
-		return ""
-	}
-	var b strings.Builder
-	for _, r := range text {
-		switch {
-		case unicode.IsLetter(r):
-			b.WriteRune(r)
-		case unicode.IsNumber(r):
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
-}
-
-func mergeKeyFragment(text string) string {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return ""
-	}
-	runes := []rune(text)
-	if len(runes) <= 24 {
-		return text
-	}
-	return string(runes[:24])
 }
 
 func HasDraftContent(draft memory.SessionDraft) bool {

@@ -1,9 +1,11 @@
 package memory
 
 import (
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 const (
@@ -45,12 +47,24 @@ func MergeShortTerm(existing ShortTermContent, draft SessionDraft) ShortTermCont
 	incomingFollowUps := normalizeTasks(draft.FollowUps)
 
 	return ShortTermContent{
-		SessionSummary: mergeKV(existing.SessionSummary, incomingSummary),
-		TemporaryFacts: mergeKV(existing.TemporaryFacts, incomingFacts),
+		SessionSummary: MergeSessionSummary(existing.SessionSummary, incomingSummary),
+		TemporaryFacts: MergeTemporaryFacts(existing.TemporaryFacts, incomingFacts),
 		Tasks:          mergeTasks(existing.Tasks, incomingTasks),
 		FollowUps:      mergeTasks(existing.FollowUps, incomingFollowUps),
 		RelatedLinks:   mergeLinks(existing.RelatedLinks, nil),
 	}
+}
+
+// MergeSessionSummary merges session summary items with fuzzy title matching.
+func MergeSessionSummary(existing []KVItem, incoming []KVItem) []KVItem {
+	merged := mergeKV(existing, incoming)
+	return mergeSimilarSessionSummary(merged)
+}
+
+// MergeTemporaryFacts merges temporary facts items with fuzzy title matching and URL overlap.
+func MergeTemporaryFacts(existing []KVItem, incoming []KVItem) []KVItem {
+	merged := mergeKV(existing, incoming)
+	return mergeSimilarTemporaryFacts(merged)
 }
 
 func MergeLongTerm(existing LongTermContent, draft PromoteDraft, now time.Time) LongTermContent {
@@ -406,6 +420,388 @@ func mergeKV(existing []KVItem, incoming []KVItem) []KVItem {
 		order = append(order, it)
 	}
 	return order
+}
+
+func mergeSimilarSessionSummary(items []KVItem) []KVItem {
+	out := make([]KVItem, 0, len(items))
+	for _, it := range items {
+		title := strings.TrimSpace(it.Title)
+		if title == "" {
+			continue
+		}
+		merged := false
+		for i := range out {
+			if titlesSimilar(out[i].Title, title) {
+				out[i].Value = mergeSessionSummaryValue(out[i].Value, it.Value)
+				merged = true
+				break
+			}
+		}
+		if !merged {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+func mergeSimilarTemporaryFacts(items []KVItem) []KVItem {
+	out := make([]KVItem, 0, len(items))
+	for _, it := range items {
+		title := strings.TrimSpace(it.Title)
+		if title == "" {
+			continue
+		}
+		merged := false
+		for i := range out {
+			if titlesSimilar(out[i].Title, title) || urlsOverlap(out[i].Value, it.Value) {
+				out[i].Value = mergeKVValueLines(out[i].Value, it.Value)
+				merged = true
+				break
+			}
+		}
+		if !merged {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+func titlesSimilar(a string, b string) bool {
+	na := normalizeTitleForMerge(a)
+	nb := normalizeTitleForMerge(b)
+	if na == "" || nb == "" {
+		return false
+	}
+	if na == nb {
+		return true
+	}
+	if strings.Contains(na, nb) || strings.Contains(nb, na) {
+		return true
+	}
+	return titleSimilarity(na, nb) >= 0.82
+}
+
+func normalizeTitleForMerge(title string) string {
+	title = strings.ToLower(strings.TrimSpace(title))
+	if title == "" {
+		return ""
+	}
+	for _, token := range []string{
+		"latest", "local", "source", "sources", "list", "lists", "website", "websites", "site", "sites", "links", "link", "entry", "query", "lookup",
+		"\u6700\u65b0", "\u672c\u5730", "\u6765\u6e90", "\u5217\u8868", "\u7f51\u7ad9", "\u5165\u53e3", "\u67e5\u8be2", "\u67e5\u770b", "\u94fe\u63a5",
+	} {
+		title = strings.ReplaceAll(title, token, "")
+	}
+	var b strings.Builder
+	for _, r := range title {
+		switch {
+		case unicode.IsLetter(r):
+			b.WriteRune(r)
+		case unicode.IsNumber(r):
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func titleSimilarity(a string, b string) float64 {
+	if a == "" || b == "" {
+		return 0
+	}
+	ga := bigrams([]rune(a))
+	gb := bigrams([]rune(b))
+	if len(ga) == 0 || len(gb) == 0 {
+		if a == b {
+			return 1
+		}
+		return 0
+	}
+	inter := 0
+	union := len(ga)
+	seen := map[string]bool{}
+	for k := range ga {
+		seen[k] = true
+	}
+	for k := range gb {
+		if seen[k] {
+			inter++
+		} else {
+			union++
+		}
+	}
+	if union == 0 {
+		return 0
+	}
+	return float64(inter) / float64(union)
+}
+
+func bigrams(runes []rune) map[string]bool {
+	out := map[string]bool{}
+	if len(runes) < 2 {
+		if len(runes) == 1 {
+			out[string(runes[0])] = true
+		}
+		return out
+	}
+	for i := 0; i < len(runes)-1; i++ {
+		out[string(runes[i:i+2])] = true
+	}
+	return out
+}
+
+var urlRegexp = regexp.MustCompile(`https?://[^\s)]+`)
+
+func urlsOverlap(a string, b string) bool {
+	ua := extractURLs(a)
+	if len(ua) == 0 {
+		return false
+	}
+	ub := extractURLs(b)
+	if len(ub) == 0 {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, u := range ua {
+		seen[u] = true
+	}
+	for _, u := range ub {
+		if seen[u] {
+			return true
+		}
+	}
+	return false
+}
+
+func extractURLs(text string) []string {
+	matches := urlRegexp.FindAllString(text, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(matches))
+	seen := map[string]bool{}
+	for _, m := range matches {
+		u := strings.TrimRight(m, ".,;:)]\"'")
+		u = strings.TrimSpace(u)
+		if u == "" {
+			continue
+		}
+		if seen[u] {
+			continue
+		}
+		seen[u] = true
+		out = append(out, u)
+	}
+	return out
+}
+
+func mergeSessionSummaryValue(existing string, incoming string) string {
+	existing = strings.TrimSpace(existing)
+	incoming = strings.TrimSpace(incoming)
+	if existing == "" {
+		return incoming
+	}
+	if incoming == "" {
+		return existing
+	}
+	existingMap, existingOrder := parseSummaryLines(existing)
+	incomingMap, _ := parseSummaryLines(incoming)
+	merged := make(map[string]string, len(existingMap)+len(incomingMap))
+	order := append([]string{}, existingOrder...)
+	for k, v := range existingMap {
+		merged[k] = v
+	}
+	for k, v := range incomingMap {
+		if _, ok := merged[k]; !ok {
+			order = append(order, k)
+		}
+		merged[k] = mergeSummaryField(k, merged[k], v)
+	}
+	if len(order) == 0 {
+		return mergeKVValueLines(existing, incoming)
+	}
+	var b strings.Builder
+	for _, k := range order {
+		val := strings.TrimSpace(merged[k])
+		if val == "" {
+			continue
+		}
+		b.WriteString(k)
+		b.WriteString(": ")
+		b.WriteString(val)
+		b.WriteString("\n")
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func parseSummaryLines(value string) (map[string]string, []string) {
+	lines := strings.Split(value, "\n")
+	out := map[string]string{}
+	order := make([]string, 0, len(lines))
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		key, val, ok := splitSummaryLine(line)
+		if !ok {
+			continue
+		}
+		if _, seen := out[key]; !seen {
+			order = append(order, key)
+		}
+		out[key] = val
+	}
+	return out, order
+}
+
+func splitSummaryLine(line string) (string, string, bool) {
+	if line == "" {
+		return "", "", false
+	}
+	sep := strings.IndexAny(line, ":：")
+	if sep <= 0 {
+		return "", "", false
+	}
+	key := strings.TrimSpace(line[:sep])
+	val := strings.TrimSpace(line[sep+1:])
+	if key == "" {
+		return "", "", false
+	}
+	key = normalizeSummaryKey(key)
+	return key, val, true
+}
+
+func normalizeSummaryKey(key string) string {
+	k := strings.ToLower(strings.TrimSpace(key))
+	switch k {
+	case "users", "\u7528\u6237", "\u4f7f\u7528\u8005":
+		return "Users"
+	case "datetime", "time", "\u65f6\u95f4", "\u65e5\u671f":
+		return "Datetime"
+	case "event", "\u4e8b\u4ef6":
+		return "Event"
+	case "result", "\u7ed3\u679c":
+		return "Result"
+	default:
+		return strings.TrimSpace(key)
+	}
+}
+
+func mergeSummaryField(key string, existing string, incoming string) string {
+	existing = strings.TrimSpace(existing)
+	incoming = strings.TrimSpace(incoming)
+	if incoming == "" {
+		return existing
+	}
+	if existing == "" {
+		return incoming
+	}
+	switch key {
+	case "Users":
+		return mergeCSV(existing, incoming)
+	case "Datetime":
+		if incoming > existing {
+			return incoming
+		}
+		return existing
+	case "Result":
+		if strings.Contains(existing, "http") || strings.Contains(incoming, "http") {
+			return mergeKVValueLines(existing, incoming)
+		}
+		if len(incoming) >= len(existing) {
+			return incoming
+		}
+		return existing
+	case "Event":
+		if len(incoming) >= len(existing) {
+			return incoming
+		}
+		return existing
+	default:
+		if len(incoming) >= len(existing) {
+			return incoming
+		}
+		return existing
+	}
+}
+
+func mergeCSV(a string, b string) string {
+	parts := strings.FieldsFunc(a+","+b, func(r rune) bool {
+		return r == ',' || r == '，' || r == ';' || r == '；'
+	})
+	seen := map[string]bool{}
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" || seen[p] {
+			continue
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	return strings.Join(out, ", ")
+}
+
+func mergeKVValueLines(a string, b string) string {
+	lines := append(parseValueLines(a), parseValueLines(b)...)
+	seen := map[string]bool{}
+	seenURL := map[string]bool{}
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		key := strings.ToLower(strings.TrimSpace(line.Key))
+		if key == "" {
+			continue
+		}
+		if seen[key] {
+			continue
+		}
+		if line.URL != "" && seenURL[line.URL] {
+			continue
+		}
+		seen[key] = true
+		if line.URL != "" {
+			seenURL[line.URL] = true
+		}
+		out = append(out, line.Text)
+	}
+	return strings.TrimSpace(strings.Join(out, "\n"))
+}
+
+type valueLine struct {
+	Text string
+	Key  string
+	URL  string
+}
+
+func parseValueLines(val string) []valueLine {
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return nil
+	}
+	rawLines := strings.Split(val, "\n")
+	out := make([]valueLine, 0, len(rawLines))
+	for _, raw := range rawLines {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		plain := strings.TrimLeft(line, "-*• ")
+		plain = strings.TrimSpace(plain)
+		if plain == "" {
+			continue
+		}
+		urls := extractURLs(plain)
+		url := ""
+		if len(urls) > 0 {
+			url = urls[0]
+		}
+		text := line
+		if url != "" && !strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "*") && !strings.HasPrefix(line, "•") {
+			text = "- " + plain
+		}
+		out = append(out, valueLine{Text: text, Key: plain, URL: url})
+	}
+	return out
 }
 
 func mergeLongTermKV(existing []KVItem, incoming []KVItem, date string) []KVItem {
