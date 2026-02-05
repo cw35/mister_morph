@@ -158,20 +158,20 @@ telegram:
 - [ ] 明确高风险/不可逆动作清单（用于禁止 reaction-only）。
   - [ ] 包含文件写入/删除、网络提交、付费、权限变更等。
   - [ ] 列出需要文字确认的场景（即便 intent 轻量也不 reaction）。
-- [ ] 定义轻量意图关键词表（用于快速判定）。
-  - [ ] 中文：收到/好的/OK/谢谢/了解/不用了/取消 等。
-  - [ ] 英文：ok/thanks/ack/received/not needed 等。
-  - [ ] 区分肯定/否定/感谢/已读/祝贺五类。
+- [x] 定义轻量意图关键词表（用于快速判定）。
+  - [x] 中文：收到/好的/OK/谢谢/了解/不用了/取消/等等 等。
+  - [x] 英文：ok/thanks/ack/received/not needed/wait 等。
+  - [x] 区分肯定/否定/感谢/已读/祝贺/等待六类。
 - [ ] 确认 Telegram API 的 reaction 参数格式与权限限制。
   - [ ] 确认 Bot 是否能对任意消息 reaction（群/私聊差异）。
   - [ ] 确认多 emoji 的上限与失败响应。
-- [ ] 设计 `telegram_react` 工具接口与返回结构。
-  - [ ] 入参：chat_id、message_id、emoji（或列表）。
-  - [ ] 出参：ok、error、applied_emoji。
-- [ ] 实现 reaction-only 输出路径与回退逻辑。
-  - [ ] 先意图推断，再判定 reaction vs text。
-  - [ ] reaction 成功则不发送文本；失败则发文本。
-  - [ ] 记录 `[reacted: 😀]` 进 history。
+- [x] 设计 `telegram_react` 工具接口与返回结构。
+  - [x] 入参：chat_id、message_id、emoji（或列表）。
+  - [x] 出参：ok、error、applied_emoji。
+- [x] 实现 reaction-only 输出路径与回退逻辑。
+  - [x] 先意图推断，再判定 reaction vs text。
+  - [x] reaction 成功则不发送文本；失败则发文本。
+  - [x] 记录 `[reacted: 😀]` 进 history。
 - [ ] 添加端到端测试（reaction 成功/失败/不适用场景）。
   - [ ] reaction-only 的输出分支覆盖。
   - [ ] fallback 文本分支覆盖。
