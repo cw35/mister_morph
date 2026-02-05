@@ -7,7 +7,7 @@ status: draft
 # Feature: Agent Heartbeat (Periodic Awareness / Checkpoint)
 
 ## Summary
-Add a lightweight, configurable **heartbeat** system for long-running agent deployments (daemon/Telegram) that acts as a **periodic awareness/checkpoint**. Each heartbeat can review a checklist + context, optionally do small actions, and **only notify when attention is needed**. If nothing to surface, it emits `HEARTBEAT_OK`, which is **silently acknowledged** (not sent to users).
+Add a lightweight, configurable **heartbeat** system for long-running agent deployments (daemon/Telegram) that acts as a **periodic awareness/checkpoint**. Each heartbeat can review a checklist + context, optionally do small actions, and **always emits a short summary** for visibility.
 
 This is a low-noise “wake up and check” loop, not a strict cron and not limited to health checks.
 
@@ -84,13 +84,13 @@ Heartbeats are normal agent runs with **special metadata** and a strict response
 **Task text** (fixed):
 ```
 You are running a heartbeat checkpoint for the agent.
-Review the provided checklist and context. If no user-visible action is needed, respond with EXACTLY: HEARTBEAT_OK
-If anything requires user attention or action, respond with: ALERT: <short summary>
+Review the provided checklist and context. Always respond with a short summary of what you checked/did.
+If anything requires user attention or action, make that explicit in the summary.
 ```
 
 **System prompt rule** (new):
-- If `mister_morph_meta.heartbeat` is present, follow the heartbeat contract strictly.
-- Keep alerts short and action-oriented.
+- If `mister_morph_meta.heartbeat` is present, always return a concise summary (no placeholders).
+- Keep summaries short and action-oriented.
 
 ### 4) Inputs & Signals (Minimal)
 Heartbeats should rely on **lightweight, local inputs** supplied by the controller:
@@ -118,9 +118,8 @@ Example snapshot payload:
 }
 ```
 
-### 5) Output Handling (ACK vs Alert)
-- If output is exactly `HEARTBEAT_OK`, suppress delivery (log only).
-- Otherwise treat as **alert** and deliver to the default target.
+### 5) Output Handling (Summary)
+- Always deliver the heartbeat summary to the default target.
 
 ### 6) Delivery Targets
 - **Telegram**: send alert to the same chat that the heartbeat is associated with.
@@ -128,7 +127,7 @@ Example snapshot payload:
 
 ### 7) Failure Handling
 - If heartbeat run fails (LLM error, timeout), increment failure count.
-- After repeated failures (implementation-defined threshold), emit `ALERT: heartbeat_failed` with the last error summary.
+- After repeated failures (implementation-defined threshold), emit a short error summary.
 
 ### 8) Checklist File (Optional)
 If `checklist_path` is set, load the file and inject it into the heartbeat prompt.
@@ -143,10 +142,10 @@ Recommended format for `HEARTBEAT.md` (short, action-oriented, no secrets):
 - If a safe quick fix is possible, do it; otherwise alert.
 ```
 
-If the file is missing, still check recent **short-term memory** (if enabled) and use the current context to find things to do; if nothing emerges, return `HEARTBEAT_OK`.
+If the file is missing, still check recent **short-term memory** (if enabled) and use the current context to find things to do; then return a short summary.
 
 Behavior details:
-- If the checklist is missing or effectively empty, review **recent short-term memory** (if enabled) and scan for reasonable next actions before returning `HEARTBEAT_OK`.
+- If the checklist is missing or effectively empty, review **recent short-term memory** (if enabled) and scan for reasonable next actions before returning a short summary.
 - If recent short-term memory contains TODOs, include a **progress snapshot** (tasks/follow_ups done/total) in the heartbeat prompt.
 - If the progress snapshot shows pending TODOs, **pick one and take the smallest next step** (tools optional). You must take at least one concrete action before alerting. Only alert if something remains or you are blocked.
 - Keep the checklist short; recommended max length: **100 lines**.
@@ -176,14 +175,13 @@ Behavior details:
 - [x] Telegram heartbeat jobs.
 - [x] Extend `telegramJob` with `IsHeartbeat bool`.
 - [x] In `runTelegramTask`, set meta `trigger=heartbeat` + chat info.
-- [x] If output is `HEARTBEAT_OK`, do **not** send a message or append to history.
-- [x] If output starts with `ALERT:`, send once and append to history.
+- [x] Always send the heartbeat summary and append to history.
 - [x] Heartbeat meta snapshot.
 - [x] Include `scheduled_at_utc`, `interval`, `source`, `chat_id` (telegram), queue length (daemon), last success/error.
 - [x] Inject via `RunOptions.Meta`.
 - [x] Checklist fallback.
 - [x] If checklist missing/empty, use short-term memory (when enabled) + current context to find next actions.
-- [x] If nothing emerges, return `HEARTBEAT_OK`.
+- [x] If nothing emerges, return a short summary stating no action needed.
 - [ ] Tests:
 - [ ] Heartbeat task builder (empty checklist detection).
 - [ ] OK suppression vs ALERT delivery (telegram + daemon).

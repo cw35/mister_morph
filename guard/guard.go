@@ -14,6 +14,7 @@ type Guard struct {
 	redactor  *Redactor
 	audit     AuditSink
 	approvals ApprovalStore
+	warnings  []string
 }
 
 func New(cfg Config, audit AuditSink, approvals ApprovalStore) *Guard {
@@ -26,6 +27,49 @@ func New(cfg Config, audit AuditSink, approvals ApprovalStore) *Guard {
 		audit:     audit,
 		approvals: approvals,
 	}
+}
+
+func NewWithWarnings(cfg Config, audit AuditSink, approvals ApprovalStore, warnings []string) *Guard {
+	if cfg.Redaction.Enabled || len(cfg.Redaction.Patterns) > 0 {
+		// ok
+	}
+	return &Guard{
+		cfg:       cfg,
+		redactor:  NewRedactor(cfg.Redaction),
+		audit:     audit,
+		approvals: approvals,
+		warnings:  normalizeWarnings(warnings),
+	}
+}
+
+func (g *Guard) Warnings() []string {
+	if g == nil || len(g.warnings) == 0 {
+		return nil
+	}
+	out := make([]string, len(g.warnings))
+	copy(out, g.warnings)
+	return out
+}
+
+func normalizeWarnings(warnings []string) []string {
+	if len(warnings) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(warnings))
+	for _, raw := range warnings {
+		msg := strings.TrimSpace(raw)
+		if msg == "" {
+			continue
+		}
+		key := strings.ToLower(msg)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, msg)
+	}
+	return out
 }
 
 func (g *Guard) Enabled() bool { return g != nil && g.cfg.Enabled }

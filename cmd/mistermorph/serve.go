@@ -159,10 +159,10 @@ func newServeCmd() *cobra.Command {
 						} else {
 							qt.heartbeatState.EndSuccess(finished)
 							out := formatFinalOutput(final)
-							if isHeartbeatOK(out) {
-								logger.Info("heartbeat_ok")
+							if strings.TrimSpace(out) != "" {
+								logger.Info("heartbeat_summary", "message", out)
 							} else {
-								logger.Warn("heartbeat_alert", "message", out)
+								logger.Info("heartbeat_summary", "message", "empty")
 							}
 						}
 					}

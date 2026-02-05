@@ -17,8 +17,6 @@ import (
 )
 
 const (
-	heartbeatOK               = "HEARTBEAT_OK"
-	heartbeatAlertPrefix      = "ALERT:"
 	heartbeatFailureThreshold = 3
 )
 
@@ -35,15 +33,6 @@ func formatFinalOutput(final *agent.Final) string {
 		b, _ := json.MarshalIndent(v, "", "  ")
 		return strings.TrimSpace(string(b))
 	}
-}
-
-func isHeartbeatOK(output string) bool {
-	return strings.EqualFold(strings.TrimSpace(output), heartbeatOK)
-}
-
-func isHeartbeatAlert(output string) bool {
-	out := strings.TrimSpace(output)
-	return strings.HasPrefix(strings.ToUpper(out), heartbeatAlertPrefix)
 }
 
 func readHeartbeatChecklist(path string) (string, bool, error) {
@@ -89,13 +78,14 @@ func buildHeartbeatTask(checklistPath string, memorySnapshot string) (string, bo
 
 	var b strings.Builder
 	b.WriteString("You are running a heartbeat checkpoint for the agent.\n")
-	b.WriteString("Review the provided checklist and context. If no user-visible action is needed, respond with EXACTLY: HEARTBEAT_OK\n")
-	b.WriteString("If anything requires user attention or action, respond with: ALERT: <short summary>\n")
-	b.WriteString("If the checklist is missing or empty, review recent short-term memory (if enabled) and current context to find things to do before returning HEARTBEAT_OK.\n")
+	b.WriteString("Review the provided checklist and context. Always respond with a short summary of what you checked/did.\n")
+	b.WriteString("If anything requires user attention or action, make that explicit in the summary.\n")
+	b.WriteString("Do NOT output placeholders like HEARTBEAT_OK.\n")
+	b.WriteString("Do NOT output mention it is a heartbeat.\n")
+	b.WriteString("If the checklist is missing or empty, review recent short-term memory (if enabled) and current context to find things to do before summarizing.\n")
 	b.WriteString("Prefer to resolve things yourself; avoid asking the user unless genuinely blocked.\n")
 	b.WriteString("If the progress snapshot shows pending tasks or follow_ups (done < total), treat that as needing attention: pick ONE pending item and take the smallest next step now (tools optional, but use them if needed).\n")
 	b.WriteString("You MUST take at least one concrete action step before returning a final response when pending items exist. Do not only acknowledge pending items.\n")
-	b.WriteString("Only return ALERT after you attempted a concrete step and something remains or you are blocked. If you fully resolve everything, return HEARTBEAT_OK.\n")
 	if !empty {
 		b.WriteString("\nChecklist:\n")
 		b.WriteString(checklist)

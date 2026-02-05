@@ -58,10 +58,12 @@ func guardFromViper(log *slog.Logger) *guard.Guard {
 	jsonlPath = pathutil.ExpandHomePath(jsonlPath)
 
 	var sink guard.AuditSink
+	var warnings []string
 	if strings.TrimSpace(jsonlPath) != "" {
 		s, err := guard.NewJSONLAuditSink(jsonlPath, cfg.Audit.RotateMaxBytes)
 		if err != nil {
 			log.Warn("guard_audit_sink_error", "error", err.Error())
+			warnings = append(warnings, "guard_audit_sink_error: "+err.Error())
 		} else {
 			sink = s
 		}
@@ -72,11 +74,13 @@ func guardFromViper(log *slog.Logger) *guard.Guard {
 		dsn, err := resolveGuardApprovalsDSN()
 		if err != nil {
 			log.Warn("guard_approvals_dsn_error", "error", err.Error())
+			warnings = append(warnings, "guard_approvals_dsn_error: "+err.Error())
 		}
 		if strings.TrimSpace(dsn) != "" && err == nil {
 			st, err := guard.NewSQLiteApprovalStore(dsn)
 			if err != nil {
 				log.Warn("guard_approvals_store_error", "error", err.Error())
+				warnings = append(warnings, "guard_approvals_store_error: "+err.Error())
 			} else {
 				approvals = st
 			}
@@ -90,6 +94,9 @@ func guardFromViper(log *slog.Logger) *guard.Guard {
 		"approvals_enabled", approvals != nil,
 	)
 
+	if len(warnings) > 0 {
+		return guard.NewWithWarnings(cfg, sink, approvals, warnings)
+	}
 	return guard.New(cfg, sink, approvals)
 }
 

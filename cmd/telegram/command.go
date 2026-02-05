@@ -26,6 +26,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/quailyquaily/mistermorph/agent"
+	"github.com/quailyquaily/mistermorph/guard"
 	"github.com/quailyquaily/mistermorph/internal/jsonutil"
 	"github.com/quailyquaily/mistermorph/internal/pathutil"
 	"github.com/quailyquaily/mistermorph/llm"
@@ -199,6 +200,15 @@ func newTelegramCmd() *cobra.Command {
 				heartbeatFailures  = make(map[int64]int)
 				offset             int64
 			)
+			var sharedGuard *guard.Guard
+
+			var (
+				warningsMu                sync.Mutex
+				systemWarnings            []string
+				systemWarningsSeen        = make(map[string]bool)
+				systemWarningsVersion     int
+				systemWarningsSentVersion = make(map[int64]int)
+			)
 
 			logger.Info("telegram_start",
 				"base_url", baseURL,
@@ -212,6 +222,92 @@ func newTelegramCmd() *cobra.Command {
 				"smart_addressing_max_chars", smartAddressingMaxChars,
 				"smart_addressing_confidence", smartAddressingConfidence,
 			)
+
+			enqueueSystemWarning := func(msg string) int {
+				msg = strings.TrimSpace(msg)
+				if msg == "" {
+					return systemWarningsVersion
+				}
+				warningsMu.Lock()
+				defer warningsMu.Unlock()
+				key := strings.ToLower(msg)
+				if systemWarningsSeen[key] {
+					return systemWarningsVersion
+				}
+				systemWarningsSeen[key] = true
+				systemWarnings = append(systemWarnings, msg)
+				systemWarningsVersion++
+				return systemWarningsVersion
+			}
+
+			systemWarningsSnapshot := func() (string, int) {
+				warningsMu.Lock()
+				defer warningsMu.Unlock()
+				if len(systemWarnings) == 0 {
+					return "", 0
+				}
+				return strings.Join(systemWarnings, "\n"), systemWarningsVersion
+			}
+
+			markSystemWarningsSent := func(chatID int64, version int) {
+				warningsMu.Lock()
+				defer warningsMu.Unlock()
+				if systemWarningsSentVersion[chatID] < version {
+					systemWarningsSentVersion[chatID] = version
+				}
+			}
+
+			sendSystemWarnings := func(chatID int64) {
+				if len(allowed) > 0 && !allowed[chatID] {
+					return
+				}
+				msg, version := systemWarningsSnapshot()
+				if version == 0 {
+					return
+				}
+				warningsMu.Lock()
+				sentVersion := systemWarningsSentVersion[chatID]
+				warningsMu.Unlock()
+				if sentVersion >= version {
+					return
+				}
+				_ = api.sendMessage(context.Background(), chatID, msg, true)
+				markSystemWarningsSent(chatID, version)
+			}
+
+			broadcastSystemWarnings := func() {
+				msg, version := systemWarningsSnapshot()
+				if version == 0 {
+					return
+				}
+				mu.Lock()
+				chatIDs := make([]int64, 0, len(lastActivity))
+				for chatID := range lastActivity {
+					chatIDs = append(chatIDs, chatID)
+				}
+				mu.Unlock()
+				for _, chatID := range chatIDs {
+					if len(allowed) > 0 && !allowed[chatID] {
+						continue
+					}
+					warningsMu.Lock()
+					sentVersion := systemWarningsSentVersion[chatID]
+					warningsMu.Unlock()
+					if sentVersion >= version {
+						continue
+					}
+					_ = api.sendMessage(context.Background(), chatID, msg, true)
+					markSystemWarningsSent(chatID, version)
+				}
+			}
+
+			sharedGuard = guardFromViper(logger)
+			if sharedGuard != nil {
+				for _, warn := range sharedGuard.Warnings() {
+					enqueueSystemWarning(warn)
+				}
+				broadcastSystemWarnings()
+			}
 
 			getOrStartWorkerLocked := func(chatID int64) *telegramChatWorker {
 				if w, ok := workers[chatID]; ok && w != nil {
@@ -245,7 +341,7 @@ func newTelegramCmd() *cobra.Command {
 							}
 
 							ctx, cancel := context.WithTimeout(context.Background(), taskTimeout)
-							final, _, loadedSkills, runErr := runTelegramTask(ctx, logger, logOpts, client, reg, api, filesEnabled, fileCacheDir, filesMaxBytes, cfg, job, model, h, sticky)
+							final, _, loadedSkills, runErr := runTelegramTask(ctx, logger, logOpts, client, reg, api, filesEnabled, fileCacheDir, filesMaxBytes, sharedGuard, cfg, job, model, h, sticky)
 							cancel()
 
 							if runErr != nil {
@@ -257,7 +353,7 @@ func newTelegramCmd() *cobra.Command {
 									heartbeatRunning[chatID] = false
 									if failures >= heartbeatFailureThreshold {
 										heartbeatFailures[chatID] = 0
-										alertMsg = "ALERT: heartbeat_failed (" + strings.TrimSpace(runErr.Error()) + ")"
+										alertMsg = strings.TrimSpace(runErr.Error())
 									}
 									mu.Unlock()
 									if strings.TrimSpace(alertMsg) != "" {
@@ -284,9 +380,6 @@ func newTelegramCmd() *cobra.Command {
 								heartbeatFailures[chatID] = 0
 								lastHeartbeat[chatID] = time.Now()
 								mu.Unlock()
-								if isHeartbeatOK(outText) {
-									return
-								}
 								if err := api.sendMessageChunked(context.Background(), chatID, outText); err != nil {
 									logger.Warn("telegram_send_error", "error", err.Error())
 								}
@@ -311,9 +404,7 @@ func newTelegramCmd() *cobra.Command {
 							}
 							cur := history[chatID]
 							if job.IsHeartbeat {
-								if !isHeartbeatOK(outText) {
-									cur = append(cur, llm.Message{Role: "assistant", Content: outText})
-								}
+								cur = append(cur, llm.Message{Role: "assistant", Content: outText})
 							} else {
 								cur = append(cur,
 									llm.Message{Role: "user", Content: job.Text},
@@ -350,6 +441,8 @@ func newTelegramCmd() *cobra.Command {
 							snap, err := buildHeartbeatProgressSnapshot(hbMemMgr, hbMaxItems)
 							if err != nil {
 								logger.Warn("telegram_heartbeat_memory_error", "error", err.Error())
+								enqueueSystemWarning(err.Error())
+								broadcastSystemWarnings()
 							} else {
 								hbSnapshot = snap
 							}
@@ -357,17 +450,40 @@ func newTelegramCmd() *cobra.Command {
 						task, checklistEmpty, err := buildHeartbeatTask(hbChecklist, hbSnapshot)
 						if err != nil {
 							logger.Warn("telegram_heartbeat_task_error", "error", err.Error())
+							enqueueSystemWarning(err.Error())
+							broadcastSystemWarnings()
 							continue
 						}
+						targets := make(map[int64]struct{})
 						mu.Lock()
-						for chatID, w := range workers {
-							if w == nil {
-								continue
+						for chatID := range lastActivity {
+							targets[chatID] = struct{}{}
+						}
+						mu.Unlock()
+						if len(allowed) > 0 {
+							for chatID := range allowed {
+								targets[chatID] = struct{}{}
 							}
+						}
+						if hbMemMgr != nil {
+							recent, err := hbMemMgr.LoadRecentTelegramChatIDs(viper.GetInt("memory.short_term_days"))
+							if err != nil {
+								logger.Warn("telegram_heartbeat_memory_error", "error", err.Error())
+								enqueueSystemWarning(err.Error())
+								broadcastSystemWarnings()
+							} else {
+								for _, chatID := range recent {
+									targets[chatID] = struct{}{}
+								}
+							}
+						}
+						mu.Lock()
+						for chatID := range targets {
 							if len(allowed) > 0 && !allowed[chatID] {
 								continue
 							}
-							if _, ok := lastActivity[chatID]; !ok {
+							w := getOrStartWorkerLocked(chatID)
+							if w == nil {
 								continue
 							}
 							if heartbeatRunning[chatID] {
@@ -377,6 +493,9 @@ func newTelegramCmd() *cobra.Command {
 								continue
 							}
 							chatType := lastChatType[chatID]
+							if strings.TrimSpace(chatType) == "" {
+								chatType = "unknown"
+							}
 							fromUserID := lastFromUser[chatID]
 							fromUsername := lastFromUsername[chatID]
 							fromName := lastFromName[chatID]
@@ -461,6 +580,7 @@ func newTelegramCmd() *cobra.Command {
 
 					chatType := strings.ToLower(strings.TrimSpace(msg.Chat.Type))
 					isGroup := chatType == "group" || chatType == "supergroup"
+					sendSystemWarnings(chatID)
 
 					cmdWord, cmdArgs := splitCommand(text)
 					switch normalizeSlashCommand(cmdWord) {
@@ -722,7 +842,7 @@ func newTelegramCmd() *cobra.Command {
 	return cmd
 }
 
-func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, api *telegramAPI, filesEnabled bool, fileCacheDir string, filesMaxBytes int64, cfg agent.Config, job telegramJob, model string, history []llm.Message, stickySkills []string) (*agent.Final, *agent.Context, []string, error) {
+func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, api *telegramAPI, filesEnabled bool, fileCacheDir string, filesMaxBytes int64, sharedGuard *guard.Guard, cfg agent.Config, job telegramJob, model string, history []llm.Message, stickySkills []string) (*agent.Final, *agent.Context, []string, error) {
 	task := job.Text
 	if baseReg == nil {
 		baseReg = registryFromViper()
@@ -808,7 +928,7 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 		agent.WithLogger(logger),
 		agent.WithLogOptions(logOpts),
 		agent.WithSkillAuthProfiles(skillAuthProfiles, viper.GetBool("secrets.require_skill_profiles")),
-		agent.WithGuard(guardFromViper(logger)),
+		agent.WithGuard(sharedGuard),
 	}
 	if planUpdateHook != nil {
 		engineOpts = append(engineOpts, agent.WithPlanStepUpdate(planUpdateHook))
