@@ -3215,25 +3215,16 @@ func classifyMAEPFeedback(ctx context.Context, client llm.Client, model string, 
 	if len(recent) > 8 {
 		recent = recent[len(recent)-8:]
 	}
-	payload := map[string]any{
-		"recent_turns":  recent,
-		"inbound_text":  inboundText,
-		"allowed_next":  []string{"continue", "wrap_up", "switch_topic"},
-		"signal_bounds": "[0,1]",
+	systemPrompt, userPrompt, err := renderMAEPFeedbackPrompts(recent, inboundText)
+	if err != nil {
+		return feedback, fmt.Errorf("render maep feedback prompts: %w", err)
 	}
-	rawPayload, _ := json.Marshal(payload)
-	systemPrompt := strings.Join([]string{
-		"Classify conversational feedback into numeric signals.",
-		"Return JSON only with schema:",
-		"{\"signal_positive\":0..1,\"signal_negative\":0..1,\"signal_bored\":0..1,\"next_action\":\"continue|wrap_up|switch_topic\",\"confidence\":0..1}.",
-		"Use wrap_up only when the user shows clear stop/low-interest intent.",
-	}, " ")
 	res, err := client.Chat(ctx, llm.Request{
 		Model:     model,
 		ForceJSON: true,
 		Messages: []llm.Message{
 			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: string(rawPayload)},
+			{Role: "user", Content: userPrompt},
 		},
 		Parameters: map[string]any{
 			"temperature": 0,

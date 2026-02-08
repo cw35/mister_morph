@@ -102,6 +102,8 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 | `telegramcmd/prompts/memory_task_match_user.tmpl` | user | Carries existing tasks, updates, and matching rules. |
 | `telegramcmd/prompts/memory_task_dedup_system.tmpl` | system | Defines the output contract for semantic task deduplication. |
 | `telegramcmd/prompts/memory_task_dedup_user.tmpl` | user | Carries tasks and deduplication rules. |
+| `telegramcmd/prompts/maep_feedback_system.tmpl` | system | Defines the output contract for MAEP feedback classification. |
+| `telegramcmd/prompts/maep_feedback_user.tmpl` | user | Carries recent turns, inbound text, allowed actions, and signal bounds for MAEP feedback classification. |
 
 ### 1) Intent inference
 
@@ -254,8 +256,12 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 ### 17) MAEP feedback classifier
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `classifyMAEPFeedback(...)`
+- Templates:
+  - `cmd/mistermorph/telegramcmd/prompts/maep_feedback_system.tmpl`
+  - `cmd/mistermorph/telegramcmd/prompts/maep_feedback_user.tmpl`
+  - Renderer: `cmd/mistermorph/telegramcmd/maep_prompts.go`
 - Purpose: classify inbound feedback signals and next conversational action
-- Primary input: recent turns + inbound text + allowed next actions
+- Primary input: recent turns + inbound text
 - Output: `maepFeedbackClassification{signal_positive, signal_negative, signal_bored, next_action, confidence}`
 - JSON required: **Yes** (`ForceJSON=true`)
 

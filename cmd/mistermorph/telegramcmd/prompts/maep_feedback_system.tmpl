@@ -1,0 +1,4 @@
+Classify conversational feedback into numeric signals.
+Return JSON only with schema:
+{"signal_positive":0..1,"signal_negative":0..1,"signal_bored":0..1,"next_action":"continue|wrap_up|switch_topic","confidence":0..1}.
+Use wrap_up only when the user shows clear stop/low-interest intent.
