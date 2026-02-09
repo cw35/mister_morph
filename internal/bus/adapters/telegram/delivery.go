@@ -70,32 +70,9 @@ func chatIDFromConversationKey(conversationKey string) (int64, error) {
 	return chatID, nil
 }
 
-func usernameFromConversationKey(conversationKey string) (string, bool) {
-	const prefix = "telegram:user:"
-	if !strings.HasPrefix(conversationKey, prefix) {
-		return "", false
-	}
-	username := strings.TrimSpace(strings.TrimPrefix(conversationKey, prefix))
-	if username == "" {
-		return "", false
-	}
-	username = strings.TrimPrefix(username, "@")
-	if username == "" {
-		return "", false
-	}
-	return "@" + username, true
-}
-
 func targetFromMessage(msg busruntime.BusMessage) (any, error) {
 	if chatID, err := chatIDFromConversationKey(msg.ConversationKey); err == nil {
 		return chatID, nil
-	}
-	if username, ok := usernameFromConversationKey(msg.ConversationKey); ok {
-		return username, nil
-	}
-	participant := strings.TrimSpace(msg.ParticipantKey)
-	if strings.HasPrefix(participant, "@") {
-		return participant, nil
 	}
 	return nil, fmt.Errorf("telegram conversation key is invalid")
 }

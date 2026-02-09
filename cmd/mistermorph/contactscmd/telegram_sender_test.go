@@ -1,6 +1,7 @@
 package contactscmd
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -77,21 +78,23 @@ func TestResolveTelegramTargetFallsBackToPrivate(t *testing.T) {
 	}
 }
 
-func TestResolveTelegramTargetLegacyUsernameFallback(t *testing.T) {
+func TestResolveTelegramTargetLegacyUsernameUnsupported(t *testing.T) {
 	contact := contacts.Contact{
 		ContactID: "tg:@alice",
 		Kind:      contacts.KindHuman,
 	}
 	target, chatType, err := contactsruntime.ResolveTelegramTarget(contact, contacts.ShareDecision{})
-	if err != nil {
-		t.Fatalf("resolveTelegramTarget() error = %v", err)
+	if err == nil {
+		t.Fatalf("resolveTelegramTarget() expected error for tg:@ fallback")
 	}
-	got, ok := target.(string)
-	if !ok || got != "@alice" {
-		t.Fatalf("target mismatch: got=%T %v", target, target)
+	if !strings.Contains(err.Error(), "telegram target not found in subject_id/contact_id") {
+		t.Fatalf("resolveTelegramTarget() error mismatch: got %q", err.Error())
+	}
+	if target != nil {
+		t.Fatalf("target mismatch: got=%T %v want nil", target, target)
 	}
 	if chatType != "" {
-		t.Fatalf("chat type mismatch: got %q want empty", chatType)
+		t.Fatalf("chatType mismatch: got %q want empty", chatType)
 	}
 }
 

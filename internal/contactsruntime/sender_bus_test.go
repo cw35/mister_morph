@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 
@@ -157,6 +158,39 @@ func TestRoutingSenderSendFailsWithoutIdempotencyKey(t *testing.T) {
 	}
 	if got := err.Error(); got != "idempotency_key is required" {
 		t.Fatalf("Send() error mismatch: got %q want %q", got, "idempotency_key is required")
+	}
+}
+
+func TestRoutingSenderSendHumanWithUsernameTargetFails(t *testing.T) {
+	ctx := context.Background()
+
+	calls := 0
+	sender := newRoutingSenderForBusTest(t, func(ctx context.Context, target any, text string) error {
+		calls++
+		return nil
+	}, &mockDataPusher{})
+	contentType, payloadBase64 := testEnvelopePayload(t, "hello")
+	_, _, err := sender.Send(ctx, contacts.Contact{
+		ContactID: "tg:@alice",
+		SubjectID: "tg:@alice",
+		Kind:      contacts.KindHuman,
+		Status:    contacts.StatusActive,
+	}, contacts.ShareDecision{
+		ContactID:      "tg:@alice",
+		ItemID:         "cand_4",
+		Topic:          busruntime.TopicShareProactiveV1,
+		ContentType:    contentType,
+		PayloadBase64:  payloadBase64,
+		IdempotencyKey: "manual:tg:@alice",
+	})
+	if err == nil {
+		t.Fatalf("Send() expected error for tg:@ fallback")
+	}
+	if !strings.Contains(err.Error(), "telegram target not found in subject_id/contact_id") {
+		t.Fatalf("Send() error mismatch: got %q", err.Error())
+	}
+	if calls != 0 {
+		t.Fatalf("send calls mismatch: got %d want 0", calls)
 	}
 }
 

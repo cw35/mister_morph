@@ -196,7 +196,8 @@ func (s *RoutingSender) Send(ctx context.Context, contact contacts.Contact, deci
 	if ctx == nil {
 		return false, false, fmt.Errorf("context is required")
 	}
-	if target, resolvedChatType, err := ResolveTelegramTarget(contact, decision); err == nil && target != nil {
+	target, resolvedChatType, telegramErr := ResolveTelegramTarget(contact, decision)
+	if telegramErr == nil && target != nil {
 		if !s.allowHumanSend {
 			return false, false, fmt.Errorf("human proactive send is disabled by config")
 		}
@@ -204,6 +205,9 @@ func (s *RoutingSender) Send(ctx context.Context, contact contacts.Contact, deci
 			return false, false, fmt.Errorf("public human proactive send is disabled by config")
 		}
 		return s.publishTelegram(ctx, target, decision)
+	}
+	if contact.Kind == contacts.KindHuman && telegramErr != nil {
+		return false, false, telegramErr
 	}
 	return s.publishMAEP(ctx, contact, decision)
 }
@@ -472,27 +476,15 @@ func telegramConversationFromTarget(target any) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	switch value := resolvedTarget.(type) {
-	case int64:
-		conversationKey, err := busruntime.BuildTelegramChatConversationKey(strconv.FormatInt(value, 10))
-		if err != nil {
-			return "", "", err
-		}
-		return conversationKey, strconv.FormatInt(value, 10), nil
-	case string:
-		username := strings.TrimPrefix(value, "@")
-		conversationKey, err := busruntime.BuildConversationKey(
-			busruntime.ChannelTelegram,
-			busruntime.ConversationScopeUser,
-			username,
-		)
-		if err != nil {
-			return "", "", err
-		}
-		return conversationKey, "@" + username, nil
-	default:
+	chatID, ok := resolvedTarget.(int64)
+	if !ok {
 		return "", "", fmt.Errorf("unsupported telegram target type: %T", resolvedTarget)
 	}
+	conversationKey, err := busruntime.BuildTelegramChatConversationKey(strconv.FormatInt(chatID, 10))
+	if err != nil {
+		return "", "", err
+	}
+	return conversationKey, strconv.FormatInt(chatID, 10), nil
 }
 
 func normalizeTelegramSendTarget(target any) (any, error) {
@@ -511,13 +503,6 @@ func normalizeTelegramSendTarget(target any) (any, error) {
 		targetText := strings.TrimSpace(value)
 		if targetText == "" {
 			return nil, fmt.Errorf("telegram target is required")
-		}
-		if strings.HasPrefix(targetText, "@") {
-			username := strings.TrimSpace(strings.TrimPrefix(targetText, "@"))
-			if username == "" {
-				return nil, fmt.Errorf("telegram username is required")
-			}
-			return "@" + username, nil
 		}
 		chatID, err := strconv.ParseInt(targetText, 10, 64)
 		if err != nil || chatID == 0 {
@@ -614,14 +599,6 @@ func ResolveTelegramTarget(contact contacts.Contact, decision contacts.ShareDeci
 				return nil, "", fmt.Errorf("invalid telegram id in %q", raw)
 			}
 			return chatID, "private", nil
-		}
-		if strings.HasPrefix(lower, "tg:@") {
-			username := strings.TrimSpace(value[len("tg:@"):])
-			username = strings.TrimPrefix(username, "@")
-			if username == "" {
-				return nil, "", fmt.Errorf("empty telegram username in %q", raw)
-			}
-			return "@" + username, "", nil
 		}
 	}
 	return nil, "", fmt.Errorf("telegram target not found in subject_id/contact_id")
