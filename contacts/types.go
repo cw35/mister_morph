@@ -23,12 +23,12 @@ const (
 const (
 	ChannelTelegram = channels.Telegram
 	ChannelMAEP     = channels.MAEP
+	ShareTopic      = "chat.message"
 )
 
 type Contact struct {
 	ContactID         string     `json:"contact_id"`
 	Kind              Kind       `json:"kind"`
-	Status            Status     `json:"status"`
 	Channel           string     `json:"channel"`
 	ContactNickname   string     `json:"nickname,omitempty"`
 	TGUsername        string     `json:"tg_username,omitempty"`
@@ -46,12 +46,9 @@ type ShareDecision struct {
 	ContactID      string `json:"contact_id"`
 	PeerID         string `json:"peer_id,omitempty"`
 	ItemID         string `json:"item_id"`
-	Topic          string `json:"topic"`
 	ContentType    string `json:"content_type"`
 	PayloadBase64  string `json:"payload_base64"`
 	IdempotencyKey string `json:"idempotency_key"`
-	SourceChatID   int64  `json:"source_chat_id,omitempty"`
-	SourceChatType string `json:"source_chat_type,omitempty"`
 }
 
 type ShareOutcome struct {

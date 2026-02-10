@@ -340,7 +340,6 @@ func seedTodoContacts(t *testing.T, contactsDir string) {
 		ContactID:       "tg:1001",
 		ContactNickname: "John",
 		Kind:            contacts.KindHuman,
-		Status:          contacts.StatusActive,
 		Channel:         contacts.ChannelTelegram,
 		PrivateChatID:   1001,
 	}, now)
@@ -351,7 +350,6 @@ func seedTodoContacts(t *testing.T, contactsDir string) {
 		ContactID:       "maep:12D3KooWPeer",
 		ContactNickname: "Momo",
 		Kind:            contacts.KindAgent,
-		Status:          contacts.StatusActive,
 		Channel:         contacts.ChannelMAEP,
 		MAEPNodeID:      "maep:12D3KooWPeer",
 	}, now)

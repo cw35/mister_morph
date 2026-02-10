@@ -193,21 +193,18 @@
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |---|---|---|---|---|
 | `contact_id` | `string` | 是 | 无 | 目标联系人 ID。 |
-| `topic` | `string` | 否 | `share.proactive.v1` | 消息 topic。 |
-| `content_type` | `string` | 否 | `application/json` | 必须是 envelope JSON 类型。 |
+| `content_type` | `string` | 否 | `application/json` | 负载类型，必须是 envelope JSON 类型。 |
 | `message_text` | `string` | 条件必填 | 无 | 文本内容；工具会自动封装为 envelope。 |
-| `payload_base64` | `string` | 条件必填 | 无 | base64url 编码的 envelope JSON。 |
-| `session_id` | `string` | 否 | 空 | 会话 ID（UUIDv7），对话类 topic 必填。 |
+| `message_base64` | `string` | 条件必填 | 无 | base64url 编码的 envelope JSON。 |
+| `session_id` | `string` | 否 | 空 | 会话 ID（UUIDv7）。`contacts_send` 固定发送 `chat.message`，因此必填。 |
 | `reply_to` | `string` | 否 | 空 | 可选，引用上一条消息 `message_id`。 |
-| `source_chat_id` | `integer` | 否 | `0` | Telegram 路由线索。 |
-| `source_chat_type` | `string` | 否 | 空 | Telegram 路由线索。 |
 
 约束：
 
-- `message_text` 与 `payload_base64` 至少提供一个。
-- `content_type` 必须为 `application/json`。
-- 若提供 `payload_base64`，其解码结果必须是 envelope JSON，并包含 `message_id` / `text` / `sent_at(RFC3339)`。
-- 对话类 topic（`share.proactive.v1` / `dm.checkin.v1` / `dm.reply.v1` / `chat.message`）必须携带 `session_id`（UUIDv7）。
+- `contacts_send` 的发送 topic 固定为 `chat.message`（调用方不再传 `topic`）。
+- `message_text` 与 `message_base64` 至少提供一个。
+- `content_type` 默认 `application/json`，且必须是 `application/json`（可带参数，如 `application/json; charset=utf-8`）。
+- 若提供 `message_base64`，其解码结果必须是 envelope JSON，并包含 `message_id` / `text` / `sent_at(RFC3339)` / `session_id(UUIDv7)`。
 - 人类联系人发送受 `contacts.human.send.*` 策略约束。
 
 ## `plan_create`

@@ -92,23 +92,14 @@ func toolArgsSummary(toolName string, params map[string]any, opts LogOptions) ma
 		if v, ok := params["contact_id"].(string); ok && strings.TrimSpace(v) != "" {
 			out["contact_id"] = truncateString(strings.TrimSpace(v), opts.MaxStringValueChars)
 		}
-		if v, ok := params["topic"].(string); ok && strings.TrimSpace(v) != "" {
-			out["topic"] = truncateString(strings.TrimSpace(v), 80)
-		}
 		if v, ok := params["content_type"].(string); ok && strings.TrimSpace(v) != "" {
 			out["content_type"] = truncateString(strings.TrimSpace(v), 80)
 		}
 		if v, ok := params["message_text"].(string); ok {
 			out["has_message_text"] = strings.TrimSpace(v) != ""
 		}
-		if v, ok := params["payload_base64"].(string); ok {
-			out["has_payload_base64"] = strings.TrimSpace(v) != ""
-		}
-		if v, ok := summaryInt(params, "source_chat_id"); ok {
-			out["source_chat_id"] = v
-		}
-		if v, ok := params["source_chat_type"].(string); ok && strings.TrimSpace(v) != "" {
-			out["source_chat_type"] = truncateString(strings.TrimSpace(v), 32)
+		if v, ok := params["message_base64"].(string); ok {
+			out["has_message_base64"] = strings.TrimSpace(v) != ""
 		}
 	case "echo":
 		if v, ok := params["value"].(string); ok && strings.TrimSpace(v) != "" {

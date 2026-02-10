@@ -44,9 +44,6 @@ func newListCmd() *cobra.Command {
 				return err
 			}
 			sort.Slice(records, func(i, j int) bool {
-				if records[i].Status != records[j].Status {
-					return records[i].Status < records[j].Status
-				}
 				return strings.TrimSpace(records[i].ContactID) < strings.TrimSpace(records[j].ContactID)
 			})
 			if outputJSON {
@@ -59,9 +56,8 @@ func newListCmd() *cobra.Command {
 			for _, item := range records {
 				_, _ = fmt.Fprintf(
 					cmd.OutOrStdout(),
-					"%s\t%s\t%s\t%s\t%s\n",
+					"%s\t%s\t%s\t%s\n",
 					item.ContactID,
-					item.Status,
 					item.Kind,
 					item.Channel,
 					item.ContactNickname,
@@ -112,7 +108,6 @@ func newUpsertCmd() *cobra.Command {
 			updated, err := svc.UpsertContact(cmd.Context(), contacts.Contact{
 				ContactID:        contactID,
 				Kind:             contacts.Kind(strings.TrimSpace(strings.ToLower(kind))),
-				Status:           parseStatus(status),
 				Channel:          strings.TrimSpace(strings.ToLower(channel)),
 				ContactNickname:  strings.TrimSpace(contactNickname),
 				PersonaBrief:     strings.TrimSpace(personaBrief),
@@ -126,14 +121,20 @@ func newUpsertCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			targetStatus := parseStatus(status)
+			if targetStatus == contacts.StatusActive || targetStatus == contacts.StatusInactive {
+				updated, err = svc.SetContactStatus(cmd.Context(), updated.ContactID, targetStatus)
+				if err != nil {
+					return err
+				}
+			}
 			if outputJSON {
 				return writeJSON(cmd.OutOrStdout(), updated)
 			}
 			_, _ = fmt.Fprintf(
 				cmd.OutOrStdout(),
-				"contact_id: %s\nstatus: %s\nkind: %s\nchannel: %s\nnickname: %s\n",
+				"contact_id: %s\nkind: %s\nchannel: %s\nnickname: %s\n",
 				updated.ContactID,
-				updated.Status,
 				updated.Kind,
 				updated.Channel,
 				updated.ContactNickname,
@@ -179,7 +180,7 @@ func newSetStatusCmd() *cobra.Command {
 			if outputJSON {
 				return writeJSON(cmd.OutOrStdout(), updated)
 			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "contact_id: %s\nstatus: %s\n", updated.ContactID, updated.Status)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "contact_id: %s\nmoved_to: %s\n", updated.ContactID, status)
 			return nil
 		},
 	}
@@ -228,7 +229,6 @@ func newSyncMAEPCmd() *cobra.Command {
 				record := contacts.Contact{
 					ContactID:       targetContactID,
 					Kind:            contacts.KindAgent,
-					Status:          contacts.StatusActive,
 					Channel:         contacts.ChannelMAEP,
 					ContactNickname: strings.TrimSpace(item.DisplayName),
 					MAEPNodeID:      nodeID,

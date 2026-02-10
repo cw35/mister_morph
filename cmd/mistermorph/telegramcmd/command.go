@@ -3788,9 +3788,6 @@ func observeMAEPContact(ctx context.Context, maepSvc *maep.Service, contactsSvc 
 
 	if found {
 		existing.Kind = contacts.KindAgent
-		if existing.Status == "" {
-			existing.Status = contacts.StatusActive
-		}
 		existing.Channel = contacts.ChannelMAEP
 		if existing.MAEPNodeID == "" && nodeID != "" {
 			existing.MAEPNodeID = nodeID
@@ -3809,7 +3806,6 @@ func observeMAEPContact(ctx context.Context, maepSvc *maep.Service, contactsSvc 
 	_, err = contactsSvc.UpsertContact(ctx, contacts.Contact{
 		ContactID:         canonicalContactID,
 		Kind:              contacts.KindAgent,
-		Status:            contacts.StatusActive,
 		Channel:           contacts.ChannelMAEP,
 		ContactNickname:   nickname,
 		MAEPNodeID:        nodeID,
@@ -3968,9 +3964,6 @@ func observeTelegramContact(ctx context.Context, svc *contacts.Service, chatID i
 	username = strings.TrimSpace(strings.TrimPrefix(username, "@"))
 	if ok {
 		existing.Kind = contacts.KindHuman
-		if existing.Status == "" {
-			existing.Status = contacts.StatusActive
-		}
 		existing.Channel = contacts.ChannelTelegram
 		if username != "" {
 			existing.TGUsername = username
@@ -3991,7 +3984,6 @@ func observeTelegramContact(ctx context.Context, svc *contacts.Service, chatID i
 	record := contacts.Contact{
 		ContactID:         contactID,
 		Kind:              contacts.KindHuman,
-		Status:            contacts.StatusActive,
 		Channel:           contacts.ChannelTelegram,
 		ContactNickname:   contactNickname,
 		TGUsername:        username,

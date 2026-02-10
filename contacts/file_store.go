@@ -101,14 +101,17 @@ func (s *FileStore) PutContact(ctx context.Context, contact Contact) error {
 			return err
 		}
 
+		targetStatus := StatusActive
+		if hasContactID(inactive, contact.ContactID) {
+			targetStatus = StatusInactive
+		}
+
 		active = removeContactByID(active, contact.ContactID)
 		inactive = removeContactByID(inactive, contact.ContactID)
 
-		switch contact.Status {
-		case StatusInactive:
+		if targetStatus == StatusInactive {
 			inactive = append(inactive, contact)
-		default:
-			contact.Status = StatusActive
+		} else {
 			active = append(active, contact)
 		}
 
@@ -122,6 +125,74 @@ func (s *FileStore) PutContact(ctx context.Context, contact Contact) error {
 	})
 }
 
+func (s *FileStore) SetContactStatus(ctx context.Context, contactID string, status Status) (Contact, error) {
+	if err := ensureNotCanceled(ctx); err != nil {
+		return Contact{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	contactID = strings.TrimSpace(contactID)
+	if contactID == "" {
+		return Contact{}, fmt.Errorf("contact_id is required")
+	}
+	switch strings.ToLower(strings.TrimSpace(string(status))) {
+	case string(StatusActive):
+		status = StatusActive
+	case string(StatusInactive):
+		status = StatusInactive
+	default:
+		return Contact{}, fmt.Errorf("invalid status")
+	}
+
+	var moved Contact
+	found := false
+	err := s.withStateLock(ctx, func() error {
+		active, err := s.loadContactsMarkdownLocked(s.activeContactsPath(), StatusActive)
+		if err != nil {
+			return err
+		}
+		inactive, err := s.loadContactsMarkdownLocked(s.inactiveContactsPath(), StatusInactive)
+		if err != nil {
+			return err
+		}
+
+		if item, ok := findContactByID(active, contactID); ok {
+			moved = item
+			found = true
+		}
+		if !found {
+			if item, ok := findContactByID(inactive, contactID); ok {
+				moved = item
+				found = true
+			}
+		}
+		if !found {
+			return fmt.Errorf("contact not found: %s", contactID)
+		}
+
+		active = removeContactByID(active, contactID)
+		inactive = removeContactByID(inactive, contactID)
+		if status == StatusInactive {
+			inactive = append(inactive, moved)
+		} else {
+			active = append(active, moved)
+		}
+
+		if err := s.saveContactsMarkdownLocked(s.activeContactsPath(), "Active Contacts", StatusActive, active); err != nil {
+			return err
+		}
+		if err := s.saveContactsMarkdownLocked(s.inactiveContactsPath(), "Inactive Contacts", StatusInactive, inactive); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return Contact{}, err
+	}
+	return moved, nil
+}
+
 func (s *FileStore) ListContacts(ctx context.Context, status Status) ([]Contact, error) {
 	if err := ensureNotCanceled(ctx); err != nil {
 		return nil, err
@@ -129,11 +200,10 @@ func (s *FileStore) ListContacts(ctx context.Context, status Status) ([]Contact,
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	status = normalizeStatus(status)
-	switch status {
-	case StatusActive:
+	switch strings.ToLower(strings.TrimSpace(string(status))) {
+	case string(StatusActive):
 		return s.loadContactsMarkdownLocked(s.activeContactsPath(), StatusActive)
-	case StatusInactive:
+	case string(StatusInactive):
 		return s.loadContactsMarkdownLocked(s.inactiveContactsPath(), StatusInactive)
 	default:
 		active, err := s.loadContactsMarkdownLocked(s.activeContactsPath(), StatusActive)
@@ -148,9 +218,6 @@ func (s *FileStore) ListContacts(ctx context.Context, status Status) ([]Contact,
 		out = append(out, active...)
 		out = append(out, inactive...)
 		sort.Slice(out, func(i, j int) bool {
-			if out[i].Status != out[j].Status {
-				return out[i].Status < out[j].Status
-			}
 			return strings.TrimSpace(out[i].ContactID) < strings.TrimSpace(out[j].ContactID)
 		})
 		return out, nil
@@ -486,6 +553,7 @@ func stripMarkdownHTMLComments(content string) string {
 
 func contactFromProfileSection(title string, profile contactProfileSection, status Status) (Contact, error) {
 	now := time.Now().UTC()
+	_ = status
 	contact := Contact{
 		ContactID:        strings.TrimSpace(profile.ContactID),
 		ContactNickname:  strings.TrimSpace(profile.Nickname),
@@ -497,9 +565,6 @@ func contactFromProfileSection(title string, profile contactProfileSection, stat
 	}
 	if contact.ContactNickname == "" && strings.TrimSpace(profile.ContactID) == "" {
 		contact.ContactNickname = strings.TrimSpace(title)
-	}
-	if status != "" {
-		contact.Status = status
 	}
 
 	privateChatID, err := parseTelegramChatID(profile.PrivateChatID)
@@ -733,6 +798,32 @@ func removeContactByID(items []Contact, contactID string) []Contact {
 	return out
 }
 
+func hasContactID(items []Contact, contactID string) bool {
+	contactID = strings.TrimSpace(contactID)
+	if contactID == "" {
+		return false
+	}
+	for _, item := range items {
+		if strings.TrimSpace(item.ContactID) == contactID {
+			return true
+		}
+	}
+	return false
+}
+
+func findContactByID(items []Contact, contactID string) (Contact, bool) {
+	contactID = strings.TrimSpace(contactID)
+	if contactID == "" {
+		return Contact{}, false
+	}
+	for _, item := range items {
+		if strings.TrimSpace(item.ContactID) == contactID {
+			return item, true
+		}
+	}
+	return Contact{}, false
+}
+
 func (s *FileStore) loadBusInboxLocked() ([]BusInboxRecord, error) {
 	var file busInboxFile
 	ok, err := readJSONFileStrict(s.busInboxPath(), &file)
@@ -868,7 +959,6 @@ func normalizeContact(c Contact, now time.Time) Contact {
 	c.PersonaBrief = strings.TrimSpace(c.PersonaBrief)
 	c.TGUsername = normalizeTelegramUsername(c.TGUsername)
 	c.Kind = normalizeKind(c.Kind)
-	c.Status = normalizeStatus(c.Status)
 	c.Channel = normalizeContactChannel(c.Channel)
 	c.GroupChatIDs = normalizeInt64Slice(c.GroupChatIDs)
 	if c.PrivateChatID <= 0 {

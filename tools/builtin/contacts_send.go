@@ -12,7 +12,10 @@ import (
 	"github.com/quailyquaily/mistermorph/contacts"
 	"github.com/quailyquaily/mistermorph/internal/contactsruntime"
 	"github.com/quailyquaily/mistermorph/internal/pathutil"
-	"github.com/quailyquaily/mistermorph/maep"
+)
+
+const (
+	contactsSendContentType = "application/json"
 )
 
 type ContactsSendToolOptions struct {
@@ -48,37 +51,25 @@ func (t *ContactsSendTool) ParameterSchema() string {
 				"type":        "string",
 				"description": "Target contact_id.",
 			},
-			"topic": map[string]any{
-				"type":        "string",
-				"description": "Message topic (default share.proactive.v1).",
-			},
 			"content_type": map[string]any{
 				"type":        "string",
-				"description": "Payload type. Must be application/json envelope.",
+				"description": "Payload type (default application/json). Must be application/json envelope.",
 			},
 			"message_text": map[string]any{
 				"type":        "string",
 				"description": "Plain text body; tool wraps it into envelope JSON.",
 			},
-			"payload_base64": map[string]any{
+			"message_base64": map[string]any{
 				"type":        "string",
 				"description": "base64url JSON envelope payload when message_text is not used.",
 			},
 			"session_id": map[string]any{
 				"type":        "string",
-				"description": "UUIDv7 session_id. Required for dialogue topics.",
+				"description": "UUIDv7 session_id. Required for contacts_send (chat.message).",
 			},
 			"reply_to": map[string]any{
 				"type":        "string",
 				"description": "Optional reply_to message_id.",
-			},
-			"source_chat_id": map[string]any{
-				"type":        "integer",
-				"description": "Optional Telegram routing hint.",
-			},
-			"source_chat_type": map[string]any{
-				"type":        "string",
-				"description": "Optional Telegram routing hint: private|group|supergroup.",
 			},
 		},
 		"required": []string{"contact_id"},
@@ -100,13 +91,8 @@ func (t *ContactsSendTool) Execute(ctx context.Context, params map[string]any) (
 	if contactID == "" {
 		return "", fmt.Errorf("missing required param: contact_id")
 	}
-	topic, _ := params["topic"].(string)
-	topic = strings.TrimSpace(topic)
-	if topic == "" {
-		topic = "share.proactive.v1"
-	}
 
-	contentType, payload, err := resolveSendPayload(params, topic, time.Now().UTC())
+	contentType, payload, err := resolveSendPayload(params, time.Now().UTC())
 	if err != nil {
 		return "", err
 	}
@@ -123,16 +109,10 @@ func (t *ContactsSendTool) Execute(ctx context.Context, params map[string]any) (
 	}
 	defer sender.Close()
 
-	sourceChatType, _ := params["source_chat_type"].(string)
-	sourceChatID := int64(parseIntDefault(params["source_chat_id"], 0))
-
 	decision := contacts.ShareDecision{
-		ContactID:      contactID,
-		Topic:          topic,
-		ContentType:    contentType,
-		PayloadBase64:  payload,
-		SourceChatID:   sourceChatID,
-		SourceChatType: strings.TrimSpace(sourceChatType),
+		ContactID:     contactID,
+		ContentType:   contentType,
+		PayloadBase64: payload,
 	}
 	decision.ItemID = "manual_" + uuid.NewString()
 	decision.IdempotencyKey = "manual:" + uuid.NewString()
@@ -153,7 +133,16 @@ func (t *ContactsSendTool) Execute(ctx context.Context, params map[string]any) (
 	return string(out), nil
 }
 
-func resolveSendPayload(params map[string]any, topic string, now time.Time) (string, string, error) {
+func resolveSendPayload(params map[string]any, now time.Time) (string, string, error) {
+	contentType, _ := params["content_type"].(string)
+	contentType = strings.TrimSpace(contentType)
+	if contentType == "" {
+		contentType = contactsSendContentType
+	}
+	if !strings.HasPrefix(strings.ToLower(contentType), contactsSendContentType) {
+		return "", "", fmt.Errorf("content_type must be application/json envelope")
+	}
+
 	sessionID, _ := params["session_id"].(string)
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID != "" {
@@ -168,8 +157,8 @@ func resolveSendPayload(params map[string]any, topic string, now time.Time) (str
 	if text, ok := params["message_text"].(string); ok {
 		text = strings.TrimSpace(text)
 		if text != "" {
-			if maep.IsDialogueTopic(topic) && sessionID == "" {
-				return "", "", fmt.Errorf("session_id is required for dialogue topics (must be uuid_v7)")
+			if sessionID == "" {
+				return "", "", fmt.Errorf("session_id is required for contacts_send topic chat.message (must be uuid_v7)")
 			}
 			envelope := map[string]any{
 				"message_id": "msg_" + uuid.NewString(),
@@ -186,55 +175,45 @@ func resolveSendPayload(params map[string]any, topic string, now time.Time) (str
 			if err != nil {
 				return "", "", err
 			}
-			return "application/json", base64.RawURLEncoding.EncodeToString(raw), nil
+			return contentType, base64.RawURLEncoding.EncodeToString(raw), nil
 		}
 	}
 
-	if raw, ok := params["payload_base64"].(string); ok {
+	if raw, ok := params["message_base64"].(string); ok {
 		raw = strings.TrimSpace(raw)
 		if raw != "" {
-			contentType, _ := params["content_type"].(string)
-			contentType = strings.TrimSpace(contentType)
-			if contentType == "" {
-				contentType = "application/json"
-			}
-			if !strings.HasPrefix(strings.ToLower(contentType), "application/json") {
-				return "", "", fmt.Errorf("content_type must be application/json envelope")
-			}
 			payloadBytes, err := base64.RawURLEncoding.DecodeString(raw)
 			if err != nil {
-				return "", "", fmt.Errorf("payload_base64 decode failed: %w", err)
+				return "", "", fmt.Errorf("message_base64 decode failed: %w", err)
 			}
 			var envelope map[string]any
 			if err := json.Unmarshal(payloadBytes, &envelope); err != nil {
-				return "", "", fmt.Errorf("payload_base64 must be envelope json")
+				return "", "", fmt.Errorf("message_base64 must be envelope json")
 			}
 			if _, ok := envelope["message_id"].(string); !ok {
-				return "", "", fmt.Errorf("payload envelope missing message_id")
+				return "", "", fmt.Errorf("message envelope missing message_id")
 			}
 			if _, ok := envelope["text"].(string); !ok {
-				return "", "", fmt.Errorf("payload envelope missing text")
+				return "", "", fmt.Errorf("message envelope missing text")
 			}
 			sentAt, ok := envelope["sent_at"].(string)
 			if !ok || strings.TrimSpace(sentAt) == "" {
-				return "", "", fmt.Errorf("payload envelope missing sent_at")
+				return "", "", fmt.Errorf("message envelope missing sent_at")
 			}
 			if _, err := time.Parse(time.RFC3339, strings.TrimSpace(sentAt)); err != nil {
-				return "", "", fmt.Errorf("payload envelope sent_at must be RFC3339")
+				return "", "", fmt.Errorf("message envelope sent_at must be RFC3339")
 			}
-			if maep.IsDialogueTopic(topic) {
-				sessionRaw, _ := envelope["session_id"].(string)
-				sessionRaw = strings.TrimSpace(sessionRaw)
-				if sessionRaw == "" {
-					return "", "", fmt.Errorf("payload envelope missing session_id for dialogue topic")
-				}
-				parsed, err := uuid.Parse(sessionRaw)
-				if err != nil || parsed.Version() != uuid.Version(7) {
-					return "", "", fmt.Errorf("payload envelope session_id must be uuid_v7")
-				}
+			sessionRaw, _ := envelope["session_id"].(string)
+			sessionRaw = strings.TrimSpace(sessionRaw)
+			if sessionRaw == "" {
+				return "", "", fmt.Errorf("message envelope missing session_id for chat.message")
 			}
-			return "application/json", raw, nil
+			parsed, err := uuid.Parse(sessionRaw)
+			if err != nil || parsed.Version() != uuid.Version(7) {
+				return "", "", fmt.Errorf("message envelope session_id must be uuid_v7")
+			}
+			return contentType, raw, nil
 		}
 	}
-	return "", "", fmt.Errorf("message_text or payload_base64 is required")
+	return "", "", fmt.Errorf("message_text or message_base64 is required")
 }

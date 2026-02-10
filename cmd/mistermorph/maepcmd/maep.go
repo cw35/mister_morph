@@ -858,9 +858,6 @@ func observeMAEPContact(ctx context.Context, maepSvc *maep.Service, contactsSvc 
 
 	if found {
 		existing.Kind = contacts.KindAgent
-		if existing.Status == "" {
-			existing.Status = contacts.StatusActive
-		}
 		existing.Channel = contacts.ChannelMAEP
 		if existing.MAEPNodeID == "" && nodeID != "" {
 			existing.MAEPNodeID = nodeID
@@ -879,7 +876,6 @@ func observeMAEPContact(ctx context.Context, maepSvc *maep.Service, contactsSvc 
 	_, err = contactsSvc.UpsertContact(ctx, contacts.Contact{
 		ContactID:         canonicalContactID,
 		Kind:              contacts.KindAgent,
-		Status:            contacts.StatusActive,
 		Channel:           contacts.ChannelMAEP,
 		ContactNickname:   nickname,
 		MAEPNodeID:        nodeID,

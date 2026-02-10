@@ -18,7 +18,6 @@ func TestLoadContactSnapshot(t *testing.T) {
 		ContactID:       "tg:@john",
 		ContactNickname: "John",
 		Kind:            contacts.KindHuman,
-		Status:          contacts.StatusActive,
 		Channel:         contacts.ChannelTelegram,
 		TGUsername:      "john",
 		PrivateChatID:   1001,
@@ -31,7 +30,6 @@ func TestLoadContactSnapshot(t *testing.T) {
 		ContactID:       "maep:12D3KooWAlicePeer",
 		ContactNickname: "Alice",
 		Kind:            contacts.KindAgent,
-		Status:          contacts.StatusActive,
 		Channel:         contacts.ChannelMAEP,
 		MAEPNodeID:      "maep:12D3KooWAlicePeer",
 	}, now)

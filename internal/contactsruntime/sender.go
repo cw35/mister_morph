@@ -197,12 +197,12 @@ func (s *RoutingSender) Send(ctx context.Context, contact contacts.Contact, deci
 	if ctx == nil {
 		return false, false, fmt.Errorf("context is required")
 	}
-	target, resolvedChatType, telegramErr := ResolveTelegramTarget(contact, decision)
+	target, resolvedChatType, telegramErr := ResolveTelegramTarget(contact)
 	if telegramErr == nil && target != nil {
 		if !s.allowHumanSend {
 			return false, false, fmt.Errorf("human proactive send is disabled by config")
 		}
-		if !s.allowHumanPublicSend && IsPublicTelegramTarget(contact, decision, target, resolvedChatType) {
+		if !s.allowHumanPublicSend && IsPublicTelegramTarget(target, resolvedChatType) {
 			return false, false, fmt.Errorf("public human proactive send is disabled by config")
 		}
 		return s.publishTelegram(ctx, target, decision)
@@ -228,12 +228,9 @@ func (s *RoutingSender) publishMAEP(ctx context.Context, contact contacts.Contac
 	if idempotencyKey == "" {
 		return false, false, fmt.Errorf("idempotency_key is required")
 	}
-	topic := strings.TrimSpace(decision.Topic)
-	if topic == "" {
-		topic = busruntime.TopicShareProactiveV1
-	}
+	topic := contacts.ShareTopic
 	now := time.Now().UTC()
-	payloadRaw, err := buildEnvelopePayload(decision, topic, decision.ContentType, decision.PayloadBase64, now)
+	payloadRaw, err := buildEnvelopePayload(decision, decision.ContentType, decision.PayloadBase64, now)
 	if err != nil {
 		return false, false, err
 	}
@@ -265,12 +262,9 @@ func (s *RoutingSender) publishTelegram(ctx context.Context, target any, decisio
 	if idempotencyKey == "" {
 		return false, false, fmt.Errorf("idempotency_key is required")
 	}
-	topic := strings.TrimSpace(decision.Topic)
-	if topic == "" {
-		topic = busruntime.TopicShareProactiveV1
-	}
+	topic := contacts.ShareTopic
 	now := time.Now().UTC()
-	payloadRaw, err := buildEnvelopePayload(decision, topic, decision.ContentType, decision.PayloadBase64, now)
+	payloadRaw, err := buildEnvelopePayload(decision, decision.ContentType, decision.PayloadBase64, now)
 	if err != nil {
 		return false, false, err
 	}
@@ -376,15 +370,12 @@ func (s *RoutingSender) dropPending(msgID string) {
 func buildMAEPDataPushRequest(decision contacts.ShareDecision, now time.Time) (maep.DataPushRequest, error) {
 	now = now.UTC()
 	req := maep.DataPushRequest{
-		Topic:          strings.TrimSpace(decision.Topic),
+		Topic:          contacts.ShareTopic,
 		ContentType:    strings.TrimSpace(decision.ContentType),
 		PayloadBase64:  strings.TrimSpace(decision.PayloadBase64),
 		IdempotencyKey: strings.TrimSpace(decision.IdempotencyKey),
 	}
-	if req.Topic == "" {
-		req.Topic = "share.proactive.v1"
-	}
-	envelopePayload, err := buildEnvelopePayload(decision, req.Topic, req.ContentType, req.PayloadBase64, now)
+	envelopePayload, err := buildEnvelopePayload(decision, req.ContentType, req.PayloadBase64, now)
 	if err != nil {
 		return maep.DataPushRequest{}, err
 	}
@@ -393,7 +384,7 @@ func buildMAEPDataPushRequest(decision contacts.ShareDecision, now time.Time) (m
 	return req, nil
 }
 
-func buildEnvelopePayload(decision contacts.ShareDecision, topic string, contentType string, payloadBase64 string, now time.Time) ([]byte, error) {
+func buildEnvelopePayload(decision contacts.ShareDecision, contentType string, payloadBase64 string, now time.Time) ([]byte, error) {
 	text, extras, err := decodeEnvelopeTextAndExtras(contentType, payloadBase64)
 	if err != nil {
 		return nil, err
@@ -408,7 +399,7 @@ func buildEnvelopePayload(decision contacts.ShareDecision, topic string, content
 		"sent_at":    now.Format(time.RFC3339),
 	}
 	sessionID := strings.TrimSpace(extras["session_id"])
-	if maep.IsDialogueTopic(topic) && sessionID == "" {
+	if maep.IsDialogueTopic(contacts.ShareTopic) && sessionID == "" {
 		return nil, fmt.Errorf("session_id is required for dialogue topics")
 	}
 	if sessionID != "" {
@@ -586,8 +577,8 @@ func (s *RoutingSender) sendTelegramTarget(ctx context.Context, target any, text
 	return nil
 }
 
-func ResolveTelegramTarget(contact contacts.Contact, decision contacts.ShareDecision) (any, string, error) {
-	if chatID, chatType, ok := preferredChatByDecision(contact, decision); ok {
+func ResolveTelegramTarget(contact contacts.Contact) (any, string, error) {
+	if chatID, chatType, ok := preferredChat(contact); ok {
 		return chatID, chatType, nil
 	}
 	value := strings.TrimSpace(contact.ContactID)
@@ -606,7 +597,7 @@ func ResolveTelegramTarget(contact contacts.Contact, decision contacts.ShareDeci
 	return nil, "", fmt.Errorf("telegram target not found in private_chat_id/group_chat_ids/contact_id")
 }
 
-func IsPublicTelegramTarget(contact contacts.Contact, decision contacts.ShareDecision, target any, resolvedChatType string) bool {
+func IsPublicTelegramTarget(target any, resolvedChatType string) bool {
 	chatType := strings.ToLower(strings.TrimSpace(resolvedChatType))
 	if chatType == "group" || chatType == "supergroup" {
 		return true
@@ -617,52 +608,13 @@ func IsPublicTelegramTarget(contact contacts.Contact, decision contacts.ShareDec
 	if id, ok := target.(int64); ok && id < 0 {
 		return true
 	}
-	if decision.SourceChatID != 0 {
-		for _, groupID := range contact.GroupChatIDs {
-			if groupID == decision.SourceChatID {
-				return true
-			}
-		}
-		return decision.SourceChatID < 0
-	}
-	t := strings.ToLower(strings.TrimSpace(decision.SourceChatType))
-	return t == "group" || t == "supergroup"
+	return false
 }
 
-func preferredChatByDecision(contact contacts.Contact, decision contacts.ShareDecision) (int64, string, bool) {
+func preferredChat(contact contacts.Contact) (int64, string, bool) {
 	privateChatID := contact.PrivateChatID
 	groupIDs := append([]int64(nil), contact.GroupChatIDs...)
 	sort.Slice(groupIDs, func(i, j int) bool { return groupIDs[i] < groupIDs[j] })
-	if decision.SourceChatID != 0 {
-		if privateChatID != 0 && decision.SourceChatID == privateChatID {
-			return privateChatID, "private", true
-		}
-		for _, groupID := range groupIDs {
-			if groupID == decision.SourceChatID {
-				return groupID, chatTypeFromChatID(groupID), true
-			}
-		}
-		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(contact.ContactID)), "tg:") {
-			idText := strings.TrimSpace(strings.TrimSpace(contact.ContactID)[len("tg:"):])
-			if chatID, err := strconv.ParseInt(idText, 10, 64); err == nil && chatID == decision.SourceChatID {
-				return chatID, chatTypeFromChatID(chatID), true
-			}
-		}
-	}
-	t := strings.ToLower(strings.TrimSpace(decision.SourceChatType))
-	if t != "" {
-		if t == "private" && privateChatID != 0 {
-			return privateChatID, "private", true
-		}
-		if t == "group" || t == "supergroup" {
-			for _, groupID := range groupIDs {
-				groupType := chatTypeFromChatID(groupID)
-				if t == groupType || (t == "group" && groupType == "supergroup") {
-					return groupID, groupType, true
-				}
-			}
-		}
-	}
 	if privateChatID != 0 {
 		return privateChatID, "private", true
 	}

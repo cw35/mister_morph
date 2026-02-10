@@ -33,6 +33,7 @@ type ContactStore interface {
 	GetContact(ctx context.Context, contactID string) (Contact, bool, error)
 	PutContact(ctx context.Context, contact Contact) error
 	ListContacts(ctx context.Context, status Status) ([]Contact, error)
+	SetContactStatus(ctx context.Context, contactID string, status Status) (Contact, error)
 }
 
 type OutboxStore interface {
@@ -115,9 +116,6 @@ func (s *Service) UpsertContact(ctx context.Context, contact Contact, now time.T
 		if input.Kind == "" {
 			contact.Kind = existing.Kind
 		}
-		if input.Status == "" {
-			contact.Status = existing.Status
-		}
 		if strings.TrimSpace(input.Channel) == "" {
 			contact.Channel = strings.TrimSpace(existing.Channel)
 		}
@@ -194,23 +192,10 @@ func (s *Service) SetContactStatus(ctx context.Context, contactID string, status
 	if contactID == "" {
 		return Contact{}, fmt.Errorf("contact_id is required")
 	}
-	status = normalizeStatus(status)
 	if err := s.ensureStore.Ensure(ctx); err != nil {
 		return Contact{}, err
 	}
-
-	contact, ok, err := s.contactStore.GetContact(ctx, contactID)
-	if err != nil {
-		return Contact{}, err
-	}
-	if !ok {
-		return Contact{}, fmt.Errorf("contact not found: %s", contactID)
-	}
-	contact.Status = status
-	if err := s.contactStore.PutContact(ctx, contact); err != nil {
-		return Contact{}, err
-	}
-	return contact, nil
+	return s.contactStore.SetContactStatus(ctx, contactID, status)
 }
 
 func (s *Service) SendDecision(ctx context.Context, now time.Time, decision ShareDecision, sender Sender) (ShareOutcome, error) {
@@ -239,10 +224,6 @@ func (s *Service) SendDecision(ctx context.Context, now time.Time, decision Shar
 
 	if strings.TrimSpace(decision.PeerID) == "" {
 		decision.PeerID = resolveMAEPPeerID(contact)
-	}
-	decision.Topic = strings.TrimSpace(decision.Topic)
-	if decision.Topic == "" {
-		decision.Topic = "share.proactive.v1"
 	}
 	decision.ContentType = strings.TrimSpace(decision.ContentType)
 	if decision.ContentType == "" {
@@ -335,7 +316,7 @@ func (s *Service) sendWithBusOutbox(ctx context.Context, now time.Time, contact 
 		ContactID:      decision.ContactID,
 		PeerID:         decision.PeerID,
 		ItemID:         decision.ItemID,
-		Topic:          decision.Topic,
+		Topic:          ShareTopic,
 		ContentType:    decision.ContentType,
 		PayloadBase64:  decision.PayloadBase64,
 	}

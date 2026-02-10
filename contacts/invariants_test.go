@@ -33,7 +33,6 @@ func TestInvariantOutboxIdempotency(t *testing.T) {
 	if _, err := svc.UpsertContact(ctx, Contact{
 		ContactID:       "maep:12D3KooWInv",
 		Kind:            KindAgent,
-		Status:          StatusActive,
 		Channel:         ChannelMAEP,
 		MAEPNodeID:      "maep:12D3KooWInv",
 		MAEPDialAddress: "/ip4/127.0.0.1/tcp/4021/p2p/12D3KooWInv",
@@ -47,7 +46,6 @@ func TestInvariantOutboxIdempotency(t *testing.T) {
 		ContactID:      "maep:12D3KooWInv",
 		PeerID:         "12D3KooWInv",
 		ItemID:         "manual_item_1",
-		Topic:          "share.proactive.v1",
 		ContentType:    "text/plain",
 		PayloadBase64:  payload,
 		IdempotencyKey: "manual:key1",

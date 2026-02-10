@@ -40,13 +40,11 @@ func TestRoutingSenderSendTelegramViaBus(t *testing.T) {
 	accepted, deduped, err := sender.Send(ctx, contacts.Contact{
 		ContactID:     "tg:12345",
 		Kind:          contacts.KindHuman,
-		Status:        contacts.StatusActive,
 		Channel:       contacts.ChannelTelegram,
 		PrivateChatID: 12345,
 	}, contacts.ShareDecision{
 		ContactID:      "tg:12345",
 		ItemID:         "cand_1",
-		Topic:          busruntime.TopicShareProactiveV1,
 		ContentType:    contentType,
 		PayloadBase64:  payloadBase64,
 		IdempotencyKey: "manual:tg:1",
@@ -88,13 +86,11 @@ func TestRoutingSenderSendMAEPViaBus(t *testing.T) {
 	accepted, deduped, err := sender.Send(ctx, contacts.Contact{
 		ContactID:  "maep:12D3KooWTestPeer",
 		Kind:       contacts.KindAgent,
-		Status:     contacts.StatusActive,
 		Channel:    contacts.ChannelMAEP,
 		MAEPNodeID: "maep:12D3KooWTestPeer",
 	}, contacts.ShareDecision{
 		ContactID:      "maep:12D3KooWTestPeer",
 		ItemID:         "cand_2",
-		Topic:          busruntime.TopicShareProactiveV1,
 		ContentType:    contentType,
 		PayloadBase64:  payloadBase64,
 		IdempotencyKey: "manual:maep:1",
@@ -116,8 +112,8 @@ func TestRoutingSenderSendMAEPViaBus(t *testing.T) {
 	if pusher.peerID != "12D3KooWTestPeer" {
 		t.Fatalf("peer_id mismatch: got %q want %q", pusher.peerID, "12D3KooWTestPeer")
 	}
-	if pusher.req.Topic != busruntime.TopicShareProactiveV1 {
-		t.Fatalf("topic mismatch: got %q want %q", pusher.req.Topic, busruntime.TopicShareProactiveV1)
+	if pusher.req.Topic != contacts.ShareTopic {
+		t.Fatalf("topic mismatch: got %q want %q", pusher.req.Topic, contacts.ShareTopic)
 	}
 	if pusher.req.IdempotencyKey != "manual:maep:1" {
 		t.Fatalf("idempotency_key mismatch: got %q want %q", pusher.req.IdempotencyKey, "manual:maep:1")
@@ -134,13 +130,11 @@ func TestRoutingSenderSendFailsWithoutIdempotencyKey(t *testing.T) {
 	_, _, err := sender.Send(ctx, contacts.Contact{
 		ContactID:     "tg:12345",
 		Kind:          contacts.KindHuman,
-		Status:        contacts.StatusActive,
 		Channel:       contacts.ChannelTelegram,
 		PrivateChatID: 12345,
 	}, contacts.ShareDecision{
 		ContactID:     "tg:12345",
 		ItemID:        "cand_3",
-		Topic:         busruntime.TopicShareProactiveV1,
 		ContentType:   contentType,
 		PayloadBase64: payloadBase64,
 	})
@@ -164,13 +158,11 @@ func TestRoutingSenderSendHumanWithUsernameTargetFails(t *testing.T) {
 	_, _, err := sender.Send(ctx, contacts.Contact{
 		ContactID:  "tg:@alice",
 		Kind:       contacts.KindHuman,
-		Status:     contacts.StatusActive,
 		Channel:    contacts.ChannelTelegram,
 		TGUsername: "alice",
 	}, contacts.ShareDecision{
 		ContactID:      "tg:@alice",
 		ItemID:         "cand_4",
-		Topic:          busruntime.TopicShareProactiveV1,
 		ContentType:    contentType,
 		PayloadBase64:  payloadBase64,
 		IdempotencyKey: "manual:tg:@alice",

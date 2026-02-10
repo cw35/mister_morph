@@ -19,7 +19,6 @@ func TestFileStoreContactsReadWrite(t *testing.T) {
 	active := Contact{
 		ContactID:        "maep:12D3KooWactive",
 		Kind:             KindAgent,
-		Status:           StatusActive,
 		Channel:          ChannelMAEP,
 		ContactNickname:  "Active Agent",
 		MAEPNodeID:       "maep:12D3KooWactive",
@@ -29,7 +28,6 @@ func TestFileStoreContactsReadWrite(t *testing.T) {
 	inactive := Contact{
 		ContactID:        "tg:1001",
 		Kind:             KindHuman,
-		Status:           StatusInactive,
 		Channel:          ChannelTelegram,
 		ContactNickname:  "Inactive Human",
 		TGUsername:       "john",
@@ -42,6 +40,9 @@ func TestFileStoreContactsReadWrite(t *testing.T) {
 	}
 	if err := store.PutContact(ctx, inactive); err != nil {
 		t.Fatalf("PutContact(inactive) error = %v", err)
+	}
+	if _, err := store.SetContactStatus(ctx, inactive.ContactID, StatusInactive); err != nil {
+		t.Fatalf("SetContactStatus(inactive) error = %v", err)
 	}
 
 	activeList, err := store.ListContacts(ctx, StatusActive)
