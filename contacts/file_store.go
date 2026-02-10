@@ -2,12 +2,8 @@ package contacts
 
 import (
 	"bufio"
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -15,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/quailyquaily/mistermorph/internal/fsstore"
 	"gopkg.in/yaml.v3"
 )
 
@@ -48,7 +45,7 @@ func (s *FileStore) Ensure(ctx context.Context) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return ensureDir(s.rootPath(), 0o700)
+	return fsstore.EnsureDir(s.rootPath(), 0o700)
 }
 
 func (s *FileStore) GetContact(ctx context.Context, contactID string) (Contact, bool, error) {
@@ -87,8 +84,12 @@ func (s *FileStore) PutContact(ctx context.Context, contact Contact) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	lockPath, err := s.stateLockPath()
+	if err != nil {
+		return err
+	}
 
-	return s.withStateLock(ctx, func() error {
+	return fsstore.WithLock(ctx, lockPath, func() error {
 		now := time.Now().UTC()
 		contact = normalizeContact(contact, now)
 
@@ -147,7 +148,11 @@ func (s *FileStore) SetContactStatus(ctx context.Context, contactID string, stat
 
 	var moved Contact
 	found := false
-	err := s.withStateLock(ctx, func() error {
+	lockPath, err := s.stateLockPath()
+	if err != nil {
+		return Contact{}, err
+	}
+	err = fsstore.WithLock(ctx, lockPath, func() error {
 		active, err := s.loadContactsMarkdownLocked(s.activeContactsPath(), StatusActive)
 		if err != nil {
 			return err
@@ -256,7 +261,11 @@ func (s *FileStore) PutBusInboxRecord(ctx context.Context, record BusInboxRecord
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.withStateLock(ctx, func() error {
+	lockPath, err := s.stateLockPath()
+	if err != nil {
+		return err
+	}
+	return fsstore.WithLock(ctx, lockPath, func() error {
 		records, err := s.loadBusInboxLocked()
 		if err != nil {
 			return err
@@ -321,7 +330,11 @@ func (s *FileStore) PutBusOutboxRecord(ctx context.Context, record BusOutboxReco
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.withStateLock(ctx, func() error {
+	lockPath, err := s.stateLockPath()
+	if err != nil {
+		return err
+	}
+	return fsstore.WithLock(ctx, lockPath, func() error {
 		records, err := s.loadBusOutboxLocked()
 		if err != nil {
 			return err
@@ -359,7 +372,7 @@ func (s *FileStore) PutBusOutboxRecord(ctx context.Context, record BusOutboxReco
 }
 
 func (s *FileStore) loadContactsMarkdownLocked(path string, status Status) ([]Contact, error) {
-	content, exists, err := readText(path)
+	content, exists, err := fsstore.ReadText(path)
 	if err != nil {
 		return nil, fmt.Errorf("read contacts markdown %s: %w", path, err)
 	}
@@ -384,7 +397,10 @@ func (s *FileStore) saveContactsMarkdownLocked(path string, title string, status
 	if err != nil {
 		return err
 	}
-	return writeTextAtomic(path, rendered, 0o700, 0o600)
+	return fsstore.WriteTextAtomic(path, rendered, fsstore.FileOptions{
+		DirPerm:  0o700,
+		FilePerm: 0o600,
+	})
 }
 
 func parseContactsMarkdown(content string, status Status) ([]Contact, error) {
@@ -826,7 +842,7 @@ func findContactByID(items []Contact, contactID string) (Contact, bool) {
 
 func (s *FileStore) loadBusInboxLocked() ([]BusInboxRecord, error) {
 	var file busInboxFile
-	ok, err := readJSONFileStrict(s.busInboxPath(), &file)
+	ok, err := fsstore.ReadJSONStrict(s.busInboxPath(), &file)
 	if err != nil {
 		return nil, err
 	}
@@ -844,33 +860,22 @@ func (s *FileStore) loadBusInboxLocked() ([]BusInboxRecord, error) {
 		}
 		out = append(out, normalized)
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].SeenAt.Equal(out[j].SeenAt) {
-			iKey, _ := busInboxRecordKey(out[i].Channel, out[i].PlatformMessageID)
-			jKey, _ := busInboxRecordKey(out[j].Channel, out[j].PlatformMessageID)
-			return iKey < jKey
-		}
-		return out[i].SeenAt.After(out[j].SeenAt)
-	})
+	sortBusInboxRecords(out)
 	return out, nil
 }
 
 func (s *FileStore) saveBusInboxLocked(records []BusInboxRecord) error {
-	sort.Slice(records, func(i, j int) bool {
-		if records[i].SeenAt.Equal(records[j].SeenAt) {
-			iKey, _ := busInboxRecordKey(records[i].Channel, records[i].PlatformMessageID)
-			jKey, _ := busInboxRecordKey(records[j].Channel, records[j].PlatformMessageID)
-			return iKey < jKey
-		}
-		return records[i].SeenAt.After(records[j].SeenAt)
-	})
+	sortBusInboxRecords(records)
 	file := busInboxFile{Version: busInboxFileVersion, Records: records}
-	return writeJSONFileAtomic(s.busInboxPath(), file)
+	return fsstore.WriteJSONAtomic(s.busInboxPath(), file, fsstore.FileOptions{
+		DirPerm:  0o700,
+		FilePerm: 0o600,
+	})
 }
 
 func (s *FileStore) loadBusOutboxLocked() ([]BusOutboxRecord, error) {
 	var file busOutboxFile
-	ok, err := readJSONFileStrict(s.busOutboxPath(), &file)
+	ok, err := fsstore.ReadJSONStrict(s.busOutboxPath(), &file)
 	if err != nil {
 		return nil, err
 	}
@@ -888,42 +893,21 @@ func (s *FileStore) loadBusOutboxLocked() ([]BusOutboxRecord, error) {
 		}
 		out = append(out, normalized)
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].UpdatedAt.Equal(out[j].UpdatedAt) {
-			iKey, _ := busOutboxRecordKey(out[i].Channel, out[i].IdempotencyKey)
-			jKey, _ := busOutboxRecordKey(out[j].Channel, out[j].IdempotencyKey)
-			return iKey < jKey
-		}
-		return out[i].UpdatedAt.After(out[j].UpdatedAt)
-	})
+	sortBusOutboxRecords(out)
 	return out, nil
 }
 
 func (s *FileStore) saveBusOutboxLocked(records []BusOutboxRecord) error {
-	sort.Slice(records, func(i, j int) bool {
-		if records[i].UpdatedAt.Equal(records[j].UpdatedAt) {
-			iKey, _ := busOutboxRecordKey(records[i].Channel, records[i].IdempotencyKey)
-			jKey, _ := busOutboxRecordKey(records[j].Channel, records[j].IdempotencyKey)
-			return iKey < jKey
-		}
-		return records[i].UpdatedAt.After(records[j].UpdatedAt)
-	})
+	sortBusOutboxRecords(records)
 	file := busOutboxFile{Version: busOutboxFileVersion, Records: records}
-	return writeJSONFileAtomic(s.busOutboxPath(), file)
+	return fsstore.WriteJSONAtomic(s.busOutboxPath(), file, fsstore.FileOptions{
+		DirPerm:  0o700,
+		FilePerm: 0o600,
+	})
 }
 
-func (s *FileStore) withStateLock(ctx context.Context, fn func() error) error {
-	return s.withLock(ctx, "state.main", fn)
-}
-
-func (s *FileStore) withLock(ctx context.Context, key string, fn func() error) error {
-	if err := ensureNotCanceled(ctx); err != nil {
-		return err
-	}
-	if strings.TrimSpace(key) == "" || fn == nil {
-		return nil
-	}
-	return fn()
+func (s *FileStore) stateLockPath() (string, error) {
+	return fsstore.BuildLockPath(filepath.Join(s.rootPath(), ".fslocks"), "state.main")
 }
 
 func (s *FileStore) rootPath() string {
@@ -1133,6 +1117,38 @@ func busOutboxRecordKey(channel string, idempotencyKey string) (string, error) {
 	return normalizedChannel + ":" + normalizedKey, nil
 }
 
+func sortBusInboxRecords(records []BusInboxRecord) {
+	sort.Slice(records, func(i, j int) bool {
+		return lessBusInboxRecord(records[i], records[j])
+	})
+}
+
+func lessBusInboxRecord(a BusInboxRecord, b BusInboxRecord) bool {
+	if a.SeenAt.Equal(b.SeenAt) {
+		if a.Channel != b.Channel {
+			return a.Channel < b.Channel
+		}
+		return a.PlatformMessageID < b.PlatformMessageID
+	}
+	return a.SeenAt.After(b.SeenAt)
+}
+
+func sortBusOutboxRecords(records []BusOutboxRecord) {
+	sort.Slice(records, func(i, j int) bool {
+		return lessBusOutboxRecord(records[i], records[j])
+	})
+}
+
+func lessBusOutboxRecord(a BusOutboxRecord, b BusOutboxRecord) bool {
+	if a.UpdatedAt.Equal(b.UpdatedAt) {
+		if a.Channel != b.Channel {
+			return a.Channel < b.Channel
+		}
+		return a.IdempotencyKey < b.IdempotencyKey
+	}
+	return a.UpdatedAt.After(b.UpdatedAt)
+}
+
 func normalizeBusInboxRecord(record BusInboxRecord) (BusInboxRecord, error) {
 	channel, err := normalizeBusChannel(record.Channel)
 	if err != nil {
@@ -1224,144 +1240,6 @@ func normalizeBusOutboxRecord(record BusOutboxRecord) (BusOutboxRecord, error) {
 		return BusOutboxRecord{}, fmt.Errorf("last_error must be empty when status is not failed")
 	}
 	return normalized, nil
-}
-
-func readJSONFileStrict(path string, out any) (bool, error) {
-	normalizedPath := filepath.Clean(strings.TrimSpace(path))
-	if normalizedPath == "." || normalizedPath == "" {
-		return false, fmt.Errorf("path is required")
-	}
-	data, err := os.ReadFile(normalizedPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, fmt.Errorf("read %s: %w", normalizedPath, err)
-	}
-	if len(bytes.TrimSpace(data)) == 0 {
-		return false, nil
-	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(out); err != nil {
-		return false, fmt.Errorf("decode %s: %w", normalizedPath, err)
-	}
-	var trailing struct{}
-	if err := dec.Decode(&trailing); err != io.EOF {
-		if err == nil {
-			return false, fmt.Errorf("decode %s: trailing data", normalizedPath)
-		}
-		return false, fmt.Errorf("decode %s: trailing data: %w", normalizedPath, err)
-	}
-	return true, nil
-}
-
-func writeJSONFileAtomic(path string, v any) error {
-	return writeJSONAtomic(path, v, 0o700, 0o600)
-}
-
-func ensureDir(path string, perm os.FileMode) error {
-	normalizedPath := filepath.Clean(strings.TrimSpace(path))
-	if normalizedPath == "" {
-		return fmt.Errorf("path is required")
-	}
-	if perm == 0 {
-		perm = 0o700
-	}
-	if err := os.MkdirAll(normalizedPath, perm); err != nil {
-		return fmt.Errorf("ensure dir %s: %w", normalizedPath, err)
-	}
-	return nil
-}
-
-func readText(path string) (string, bool, error) {
-	normalizedPath := filepath.Clean(strings.TrimSpace(path))
-	if normalizedPath == "" {
-		return "", false, fmt.Errorf("path is required")
-	}
-	data, err := os.ReadFile(normalizedPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", false, nil
-		}
-		return "", false, fmt.Errorf("read text %s: %w", normalizedPath, err)
-	}
-	return string(data), true, nil
-}
-
-func writeTextAtomic(path string, content string, dirPerm os.FileMode, filePerm os.FileMode) error {
-	return writeBytesAtomic(path, []byte(content), dirPerm, filePerm)
-}
-
-func readJSON(path string, out any) (bool, error) {
-	normalizedPath := filepath.Clean(strings.TrimSpace(path))
-	if normalizedPath == "" {
-		return false, fmt.Errorf("path is required")
-	}
-	data, err := os.ReadFile(normalizedPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, fmt.Errorf("read json %s: %w", normalizedPath, err)
-	}
-	if len(bytes.TrimSpace(data)) == 0 {
-		return false, nil
-	}
-	if err := json.Unmarshal(data, out); err != nil {
-		return false, fmt.Errorf("decode json %s: %w", normalizedPath, err)
-	}
-	return true, nil
-}
-
-func writeJSONAtomic(path string, v any, dirPerm os.FileMode, filePerm os.FileMode) error {
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode json %s: %w", strings.TrimSpace(path), err)
-	}
-	data = append(data, '\n')
-	return writeBytesAtomic(path, data, dirPerm, filePerm)
-}
-
-func writeBytesAtomic(path string, data []byte, dirPerm os.FileMode, filePerm os.FileMode) error {
-	normalizedPath := filepath.Clean(strings.TrimSpace(path))
-	if normalizedPath == "" {
-		return fmt.Errorf("path is required")
-	}
-	if dirPerm == 0 {
-		dirPerm = 0o700
-	}
-	if filePerm == 0 {
-		filePerm = 0o600
-	}
-	parentDir := filepath.Dir(normalizedPath)
-	if err := ensureDir(parentDir, dirPerm); err != nil {
-		return err
-	}
-
-	tmp, err := os.CreateTemp(parentDir, filepath.Base(normalizedPath)+".tmp.*")
-	if err != nil {
-		return fmt.Errorf("create temp for %s: %w", normalizedPath, err)
-	}
-	tmpPath := tmp.Name()
-	defer func() {
-		_ = tmp.Close()
-		_ = os.Remove(tmpPath)
-	}()
-
-	if _, err := tmp.Write(data); err != nil {
-		return fmt.Errorf("write temp for %s: %w", normalizedPath, err)
-	}
-	if err := tmp.Chmod(filePerm); err != nil {
-		return fmt.Errorf("chmod temp for %s: %w", normalizedPath, err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close temp for %s: %w", normalizedPath, err)
-	}
-	if err := os.Rename(tmpPath, normalizedPath); err != nil {
-		return fmt.Errorf("rename temp for %s: %w", normalizedPath, err)
-	}
-	return nil
 }
 
 func ensureNotCanceled(ctx context.Context) error {

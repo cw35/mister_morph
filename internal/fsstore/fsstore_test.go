@@ -74,6 +74,46 @@ func TestReadWriteJSONAtomic(t *testing.T) {
 	}
 }
 
+func TestReadJSONStrictRejectsUnknownField(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "state.json")
+	raw := `{"name":"alpha","unknown":"x"}` + "\n"
+	if err := WriteTextAtomic(path, raw, FileOptions{}); err != nil {
+		t.Fatalf("WriteTextAtomic() error = %v", err)
+	}
+	var out struct {
+		Name string `json:"name"`
+	}
+	_, err := ReadJSONStrict(path, &out)
+	if err == nil {
+		t.Fatalf("ReadJSONStrict() expected decode error")
+	}
+	if !errors.Is(err, ErrDecodeFailed) {
+		t.Fatalf("ReadJSONStrict() error = %v, want ErrDecodeFailed", err)
+	}
+}
+
+func TestReadJSONStrictRejectsTrailingData(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "state.json")
+	raw := `{"name":"alpha"}` + "\n" + `{"name":"beta"}` + "\n"
+	if err := WriteTextAtomic(path, raw, FileOptions{}); err != nil {
+		t.Fatalf("WriteTextAtomic() error = %v", err)
+	}
+	var out struct {
+		Name string `json:"name"`
+	}
+	_, err := ReadJSONStrict(path, &out)
+	if err == nil {
+		t.Fatalf("ReadJSONStrict() expected trailing data error")
+	}
+	if !errors.Is(err, ErrDecodeFailed) {
+		t.Fatalf("ReadJSONStrict() error = %v, want ErrDecodeFailed", err)
+	}
+}
+
 func TestReadWriteTextAtomic(t *testing.T) {
 	t.Parallel()
 
