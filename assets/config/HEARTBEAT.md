@@ -20,8 +20,7 @@ Above are just examples, do not consider them as actual tasks to be done.
 ## Contacts Proactive Check
 
 - Use `memory_recently` first (`days=3`, `limit=20`) to load recent context and routing clues.
-- Use `contacts_list` (`status=active`) to review active contacts.
-- Rank current candidates with `contacts_candidate_rank` (`limit=3`) and pick top results.
+- Use `read_file` to read `file_state_dir/contacts/ACTIVE.md`, then select contacts for the current round.
 - Send selected items using `contacts_send` (one send call per selected contact).
 - Session feedback states are updated by runtime program flow (no LLM tool call needed).
 - If no contact is selected, summarize the reason (for example: no fresh candidates, cooldown, trust constraints).

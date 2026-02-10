@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/quailyquaily/mistermorph/internal/llmutil"
 	"github.com/quailyquaily/mistermorph/internal/statepaths"
 	"github.com/quailyquaily/mistermorph/secrets"
 	"github.com/quailyquaily/mistermorph/tools"
@@ -166,21 +165,6 @@ func registryFromViper() *tools.Registry {
 	}
 
 	if viper.GetBool("tools.contacts.enabled") {
-		r.Register(builtin.NewContactsUpsertTool(true, statepaths.ContactsDir()))
-		r.Register(builtin.NewContactsListTool(true, statepaths.ContactsDir()))
-		r.Register(builtin.NewContactsCandidateRankTool(builtin.ContactsCandidateRankToolOptions{
-			Enabled:                      true,
-			ContactsDir:                  statepaths.ContactsDir(),
-			DefaultLimit:                 viper.GetInt("contacts.proactive.max_targets"),
-			DefaultFreshnessWindow:       contactsDefaultFreshnessWindow(),
-			DefaultMaxLinkedHistoryItems: 4,
-			DefaultHumanPublicSend:       viper.GetBool("contacts.human.send.public_enabled"),
-			DefaultLLMProvider:           llmutil.ProviderFromViper(),
-			DefaultLLMEndpoint:           llmutil.EndpointFromViper(),
-			DefaultLLMAPIKey:             llmutil.APIKeyFromViper(),
-			DefaultLLMModel:              llmutil.ModelFromViper(),
-			DefaultLLMTimeout:            30 * time.Second,
-		}))
 		r.Register(builtin.NewContactsSendTool(builtin.ContactsSendToolOptions{
 			Enabled:              true,
 			ContactsDir:          statepaths.ContactsDir(),
@@ -194,13 +178,6 @@ func registryFromViper() *tools.Registry {
 	}
 
 	return r
-}
-
-func contactsDefaultFreshnessWindow() time.Duration {
-	if viper.IsSet("contacts.proactive.freshness_window") {
-		return viper.GetDuration("contacts.proactive.freshness_window")
-	}
-	return 72 * time.Hour
 }
 
 func contactsFailureCooldown() time.Duration {

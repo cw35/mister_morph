@@ -158,7 +158,7 @@ tools:
       # Max items returned by memory_recently.
       max_items: 50
   contacts:
-    # Enable contacts tools (contacts_upsert / contacts_list / contacts_candidate_rank / contacts_send).
+    # Enable contacts tool (contacts_send).
     enabled: true
   todo:
     # Enable TODO tool (todo_update).

@@ -13,9 +13,6 @@
   - `web_search`
   - `memory_recently`
   - `todo_update`
-  - `contacts_upsert`
-  - `contacts_list`
-  - `contacts_candidate_rank`
   - `contacts_send`
 - 条件注册
   - `plan_create`（在 `run` / `telegram` / `daemon serve` 模式通过 `internal/toolsutil.RegisterPlanTool` 注入）
@@ -182,81 +179,14 @@
 
 注：`missing_reference_id` 在当前实现中通常由内部 LLM 解析阶段触发并被工具降级处理为原样写入；若上游直接消费该错误仍可按该字符串识别。
 
-## `contacts_upsert`
-
-用途：创建或更新单个联系人画像（支持部分字段更新，未提供字段默认保留原值）。
-
-参数：
-
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|---|---|---|---|---|
-| `contact_id` | `string` | 条件必填 | 无 | 联系人稳定 ID。更新时建议提供。 |
-| `kind` | `string` | 否 | 保留旧值或存储层默认 | `agent` / `human`。 |
-| `status` | `string` | 否 | `active` | `active` / `inactive`。 |
-| `contact_nickname` | `string` | 否 | 空 | 联系人昵称。 |
-| `persona_brief` | `string` | 否 | 空 | 联系人互动风格摘要。 |
-| `persona_traits` | `object<string,number>` | 否 | 空 | 人格特征权重映射。 |
-| `pronouns` | `string` | 否 | 空 | 代词信息（如 `she/her`、`they/them`）。 |
-| `timezone` | `string` | 否 | 空 | IANA 时区（如 `Asia/Shanghai`、`America/New_York`）。 |
-| `preference_context` | `string` | 否 | 空 | 长文本偏好/上下文备注。 |
-| `subject_id` | `string` | 条件必填 | 空 | 人类联系人的主体 ID。 |
-| `understanding_depth` | `number` | 否 | 继承旧值或 `30` | 认知深度，范围 `[0,100]`。 |
-| `topic_weights` | `object<string,number>` | 否 | 空 | topic 偏好权重映射。 |
-| `reciprocity_norm` | `number` | 否 | 继承旧值或 `0.5` | 互惠分，范围 `[0,1]`。 |
-
-约束：
-
-- `contact_id` / `subject_id` 至少提供一个。
-- 当 `contact_id` 缺失时，服务会尝试由 `subject_id` 推导联系人 ID。
-- `kind` 仅支持 `agent|human`。
-- `status` 仅支持 `active|inactive`。
-- `timezone` 仅接受合法 IANA 时区；非法值会被规范化为“空”。
-- 数值参数会在存储层被归一化（例如深度裁剪到 `[0,100]`、分值裁剪到 `[0,1]`）。
-
-## `contacts_list`
-
-用途：列出联系人信息。
-
-参数：
-
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|---|---|---|---|---|
-| `status` | `string` | 否 | `all` | `all` / `active` / `inactive`。 |
-| `limit` | `integer` | 否 | `0` | 返回条数上限，`<=0` 表示不限制。 |
-
-返回：
-
-- 返回 JSON 数组，元素为 `Contact` 对象（结构与 `contacts/types.go` 对齐）。
-- 关键字段包含：
-  - `contact_id` / `kind` / `status`
-  - `contact_nickname` / `persona_brief` / `persona_traits`
-  - `pronouns` / `timezone` / `preference_context`
-  - `subject_id` / `node_id` / `peer_id` / `addresses`
-  - `understanding_depth` / `topic_weights` / `reciprocity_norm`
-  - `created_at` / `updated_at` 及分享状态相关字段
-
-## `contacts_candidate_rank`
-
-用途：对当前候选池做排序，仅返回决策，不发送、不改状态。
-
-参数：
-
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|---|---|---|---|---|
-| `limit` | `integer` | 否 | 配置默认 | 返回决策上限。 |
-| `freshness_window` | `string` | 否 | 配置默认 | 时长字符串，如 `72h`。 |
-| `max_linked_history_items` | `integer` | 否 | `4` | 每条决策关联历史上限。 |
-| `human_public_send_enabled` | `boolean` | 否 | 配置默认 | 是否允许面向公开聊天目标。 |
-| `push_topic` | `string` | 否 | `share.proactive.v1` | 决策里填充的推送 topic。 |
-
-说明：
-
-- 本工具默认启用 LLM 特征抽取，使用全局 `llm.*` 配置。
-- 人类联系人候选默认始终参与排序（等效 `human_enabled=true`）。
-
 ## `contacts_send`
 
 用途：向单个联系人发送一条消息（自动路由 MAEP/Telegram）。
+
+联系人资料维护说明：
+
+- 读取联系人请用 `read_file` 读取 `file_state_dir/contacts/ACTIVE.md` 与 `file_state_dir/contacts/INACTIVE.md`。
+- 更新联系人请用 `write_file` 直接编辑上述文件（遵循模板中的 YAML profile 结构）。
 
 参数：
 

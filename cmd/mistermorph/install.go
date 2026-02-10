@@ -20,7 +20,7 @@ import (
 func newInstallCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "install [dir]",
-		Short: "Install config.yaml, HEARTBEAT.md, TOOLS.md, IDENTITY.md, SOUL.md, TODO templates, and built-in skills",
+		Short: "Install config.yaml, HEARTBEAT.md, TOOLS.md, IDENTITY.md, SOUL.md, TODO templates, contacts templates, and built-in skills",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "~/.morph/"
@@ -68,6 +68,20 @@ func newInstallCmd() *cobra.Command {
 			writeTodoDone := true
 			if _, err := os.Stat(todoDonePath); err == nil {
 				writeTodoDone = false
+			}
+			contactsDirName := strings.TrimSpace(viper.GetString("contacts.dir_name"))
+			if contactsDirName == "" {
+				contactsDirName = "contacts"
+			}
+			contactsActivePath := filepath.Join(dir, contactsDirName, "ACTIVE.md")
+			writeContactsActive := true
+			if _, err := os.Stat(contactsActivePath); err == nil {
+				writeContactsActive = false
+			}
+			contactsInactivePath := filepath.Join(dir, contactsDirName, "INACTIVE.md")
+			writeContactsInactive := true
+			if _, err := os.Stat(contactsInactivePath); err == nil {
+				writeContactsInactive = false
 			}
 
 			identityPath := filepath.Join(workspaceRoot, "IDENTITY.md")
@@ -125,6 +139,18 @@ func newInstallCmd() *cobra.Command {
 					Loader: loadTodoDoneTemplate,
 				},
 				{
+					Name:   "contacts/ACTIVE.md",
+					Path:   contactsActivePath,
+					Write:  writeContactsActive,
+					Loader: loadContactsActiveTemplate,
+				},
+				{
+					Name:   "contacts/INACTIVE.md",
+					Path:   contactsInactivePath,
+					Write:  writeContactsInactive,
+					Loader: loadContactsInactiveTemplate,
+				},
+				{
 					Name:   "IDENTITY.md",
 					Path:   identityPath,
 					Write:  writeIdentity,
@@ -149,6 +175,9 @@ func newInstallCmd() *cobra.Command {
 				}
 				body, err := plan.Loader()
 				if err != nil {
+					return err
+				}
+				if err := os.MkdirAll(filepath.Dir(plan.Path), 0o755); err != nil {
 					return err
 				}
 				if err := os.WriteFile(plan.Path, []byte(body), 0o644); err != nil {
@@ -238,6 +267,22 @@ func loadTodoDoneTemplate() (string, error) {
 	data, err := assets.ConfigFS.ReadFile("config/TODO.DONE.md")
 	if err != nil {
 		return "", fmt.Errorf("read embedded TODO.DONE.md: %w", err)
+	}
+	return string(data), nil
+}
+
+func loadContactsActiveTemplate() (string, error) {
+	data, err := assets.ConfigFS.ReadFile("config/contacts/ACTIVE.md")
+	if err != nil {
+		return "", fmt.Errorf("read embedded contacts/ACTIVE.md: %w", err)
+	}
+	return string(data), nil
+}
+
+func loadContactsInactiveTemplate() (string, error) {
+	data, err := assets.ConfigFS.ReadFile("config/contacts/INACTIVE.md")
+	if err != nil {
+		return "", fmt.Errorf("read embedded contacts/INACTIVE.md: %w", err)
 	}
 	return string(data), nil
 }

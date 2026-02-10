@@ -88,57 +88,6 @@ func toolArgsSummary(toolName string, params map[string]any, opts LogOptions) ma
 		if v, ok := params["path"].(string); ok && strings.TrimSpace(v) != "" {
 			out["path"] = truncateString(strings.TrimSpace(v), opts.MaxStringValueChars)
 		}
-	case "contacts_upsert":
-		if v, ok := params["contact_id"].(string); ok && strings.TrimSpace(v) != "" {
-			out["contact_id"] = truncateString(strings.TrimSpace(v), opts.MaxStringValueChars)
-		}
-		if v, ok := params["subject_id"].(string); ok && strings.TrimSpace(v) != "" {
-			out["subject_id"] = truncateString(strings.TrimSpace(v), opts.MaxStringValueChars)
-		}
-		if v, ok := params["kind"].(string); ok && strings.TrimSpace(v) != "" {
-			out["kind"] = truncateString(strings.TrimSpace(v), 24)
-		}
-		if v, ok := params["status"].(string); ok && strings.TrimSpace(v) != "" {
-			out["status"] = truncateString(strings.TrimSpace(v), 32)
-		}
-		if v, ok := params["contact_nickname"].(string); ok && strings.TrimSpace(v) != "" {
-			out["contact_nickname"] = truncateString(strings.TrimSpace(v), 64)
-		}
-		if v, ok := params["pronouns"].(string); ok && strings.TrimSpace(v) != "" {
-			out["pronouns"] = truncateString(strings.TrimSpace(v), 32)
-		}
-		if v, ok := params["timezone"].(string); ok && strings.TrimSpace(v) != "" {
-			out["timezone"] = truncateString(strings.TrimSpace(v), 64)
-		}
-		if v, ok := params["preference_context"].(string); ok {
-			out["has_preference_context"] = strings.TrimSpace(v) != ""
-		}
-		if _, ok := params["topic_weights"]; ok {
-			out["has_topic_weights"] = true
-		}
-		if _, ok := params["persona_traits"]; ok {
-			out["has_persona_traits"] = true
-		}
-	case "contacts_list":
-		if v, ok := params["status"].(string); ok && strings.TrimSpace(v) != "" {
-			out["status"] = truncateString(strings.TrimSpace(v), 40)
-		}
-		if v, ok := summaryInt(params, "limit"); ok {
-			out["limit"] = v
-		}
-	case "contacts_candidate_rank":
-		if v, ok := summaryInt(params, "limit"); ok {
-			out["limit"] = v
-		}
-		if v, ok := params["freshness_window"].(string); ok && strings.TrimSpace(v) != "" {
-			out["freshness_window"] = truncateString(strings.TrimSpace(v), 40)
-		}
-		if v, ok := params["human_public_send_enabled"].(bool); ok {
-			out["human_public_send_enabled"] = v
-		}
-		if v, ok := params["push_topic"].(string); ok && strings.TrimSpace(v) != "" {
-			out["push_topic"] = truncateString(strings.TrimSpace(v), 80)
-		}
 	case "contacts_send":
 		if v, ok := params["contact_id"].(string); ok && strings.TrimSpace(v) != "" {
 			out["contact_id"] = truncateString(strings.TrimSpace(v), opts.MaxStringValueChars)

@@ -141,3 +141,29 @@ func TestLoadTodoDoneTemplate(t *testing.T) {
 		t.Fatalf("TODO.DONE template seems invalid")
 	}
 }
+
+func TestLoadContactsActiveTemplate(t *testing.T) {
+	body, err := loadContactsActiveTemplate()
+	if err != nil {
+		t.Fatalf("loadContactsActiveTemplate() error = %v", err)
+	}
+	if body == "" {
+		t.Fatalf("expected non-empty contacts ACTIVE template")
+	}
+	if !strings.Contains(body, "# Active Contacts") {
+		t.Fatalf("contacts ACTIVE template seems invalid")
+	}
+}
+
+func TestLoadContactsInactiveTemplate(t *testing.T) {
+	body, err := loadContactsInactiveTemplate()
+	if err != nil {
+		t.Fatalf("loadContactsInactiveTemplate() error = %v", err)
+	}
+	if body == "" {
+		t.Fatalf("expected non-empty contacts INACTIVE template")
+	}
+	if !strings.Contains(body, "# Inactive Contacts") {
+		t.Fatalf("contacts INACTIVE template seems invalid")
+	}
+}
