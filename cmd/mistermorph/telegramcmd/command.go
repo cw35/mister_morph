@@ -1185,7 +1185,7 @@ func newTelegramCmd() *cobra.Command {
 									StartedAt: time.Now().UTC(),
 								}
 								mu.Unlock()
-								_ = api.sendMessage(context.Background(), chatID, questionMsg, true)
+								_ = api.sendMessageMarkdownV2(context.Background(), chatID, questionMsg, true)
 								continue
 							}
 						}
@@ -1231,7 +1231,7 @@ func newTelegramCmd() *cobra.Command {
 								if greetErr != nil {
 									logger.Warn("telegram_init_greeting_error", "error", greetErr.Error())
 								}
-								_ = api.sendMessage(context.Background(), chatID, greeting, true)
+								_ = api.sendMessageMarkdownV2(context.Background(), chatID, greeting, true)
 								continue
 							}
 						}
@@ -2703,21 +2703,6 @@ func (api *telegramAPI) downloadFileTo(ctx context.Context, filePath, dstPath st
 	return n, false, nil
 }
 
-func (api *telegramAPI) sendMessage(ctx context.Context, chatID int64, text string, disablePreview bool) error {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		text = "(empty)"
-	}
-
-	// Telegram MarkdownV2 can be picky; fall back to plain text only for parse errors.
-	if err := api.sendMessageWithParseMode(ctx, chatID, text, disablePreview, "MarkdownV2"); err == nil {
-		return nil
-	} else if !isTelegramMarkdownParseError(err) {
-		return err
-	}
-	return api.sendMessageWithParseMode(ctx, chatID, text, disablePreview, "")
-}
-
 func (api *telegramAPI) sendMessageMarkdownV2(ctx context.Context, chatID int64, text string, disablePreview bool) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -2782,14 +2767,14 @@ func (api *telegramAPI) sendMessageChunked(ctx context.Context, chatID int64, te
 	const max = 3500
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return api.sendMessage(ctx, chatID, "(empty)", true)
+		return api.sendMessageMarkdownV2(ctx, chatID, "(empty)", true)
 	}
 	for len(text) > 0 {
 		chunk := text
 		if len(chunk) > max {
 			chunk = chunk[:max]
 		}
-		if err := api.sendMessage(ctx, chatID, chunk, true); err != nil {
+		if err := api.sendMessageMarkdownV2(ctx, chatID, chunk, true); err != nil {
 			return err
 		}
 		text = strings.TrimSpace(text[len(chunk):])
