@@ -48,7 +48,7 @@ func TestStoreAddAndComplete(t *testing.T) {
 	now := time.Date(2026, 2, 9, 10, 0, 0, 0, time.UTC)
 	store.Now = func() time.Time { return now }
 
-	addRes, err := store.Add(context.Background(), "帮 John (tg:1001) 发消息给 Momo (maep:12D3KooWPeer)")
+	addRes, err := store.Add(context.Background(), "帮 [John](tg:1001) 发消息给 [Momo](maep:12D3KooWPeer)")
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -60,7 +60,7 @@ func TestStoreAddAndComplete(t *testing.T) {
 	}
 
 	now = now.Add(30 * time.Minute)
-	completeRes, err := store.Complete(context.Background(), "发消息给 Momo")
+	completeRes, err := store.Complete(context.Background(), "发消息给 [Momo](maep:12D3KooWPeer)")
 	if err != nil {
 		t.Fatalf("Complete() error = %v", err)
 	}
@@ -88,7 +88,7 @@ func TestStoreAddRejectsInvalidReferenceID(t *testing.T) {
 		return time.Date(2026, 2, 9, 10, 0, 0, 0, time.UTC)
 	}
 
-	_, err := store.Add(context.Background(), "提醒 John (unknown id) 明天回复")
+	_, err := store.Add(context.Background(), "提醒 [John](unknown id) 明天回复")
 	if err == nil {
 		t.Fatalf("expected Add() to fail for invalid reference id")
 	}

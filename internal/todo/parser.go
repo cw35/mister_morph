@@ -3,11 +3,14 @@ package todo
 import (
 	"bufio"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+var metadataTuplePattern = regexp.MustCompile(`^\[(Created|Done|ChatID)\]\(([^()]+)\)$`)
 
 type fileFrontmatter struct {
 	CreatedAt string `yaml:"created_at"`
@@ -127,24 +130,13 @@ func ParseEntryFromInput(raw string, now string) (Entry, error) {
 	raw = strings.TrimPrefix(raw, "- [x]")
 	raw = strings.TrimPrefix(raw, "- [X]")
 	raw = strings.TrimSpace(raw)
-	if strings.HasPrefix(raw, "CreatedAt:") {
-		parts := strings.SplitN(raw, " - ", 2)
-		if len(parts) == 2 {
-			raw = strings.TrimSpace(parts[1])
-		}
-	}
 	if raw == "" {
 		return Entry{}, fmt.Errorf("content is required")
-	}
-	chatID := ""
-	if parsedChatID, parsedContent, ok := splitChatIDPrefix(raw); ok {
-		chatID = parsedChatID
-		raw = parsedContent
 	}
 	return Entry{
 		Done:      false,
 		CreatedAt: strings.TrimSpace(now),
-		ChatID:    chatID,
+		ChatID:    "",
 		Content:   raw,
 	}, nil
 }
@@ -211,23 +203,31 @@ func parseEntryLines(body string, done bool) []Entry {
 
 func parseWIPEntryLine(line string) (Entry, bool) {
 	line = strings.TrimSpace(line)
-	if !strings.HasPrefix(line, "- [ ] CreatedAt: ") {
+	if !strings.HasPrefix(line, "- [ ] ") {
 		return Entry{}, false
 	}
-	rest := strings.TrimPrefix(line, "- [ ] CreatedAt: ")
-	parts := strings.SplitN(rest, " - ", 2)
-	if len(parts) != 2 {
+	rest := strings.TrimSpace(strings.TrimPrefix(line, "- [ ] "))
+	metaRaw, content, ok := splitEntryMetadataAndContent(rest)
+	if !ok {
 		return Entry{}, false
 	}
-	createdAt := strings.TrimSpace(parts[0])
-	content := strings.TrimSpace(parts[1])
-	if !validTimestamp(createdAt) || content == "" {
+	meta, ok := parseEntryMetadata(metaRaw)
+	if !ok || content == "" {
+		return Entry{}, false
+	}
+	createdAt, ok := meta["Created"]
+	if !ok || !validTimestamp(createdAt) {
+		return Entry{}, false
+	}
+	if _, exists := meta["Done"]; exists {
 		return Entry{}, false
 	}
 	chatID := ""
-	if parsedChatID, parsedContent, ok := splitChatIDPrefix(content); ok {
-		chatID = parsedChatID
-		content = parsedContent
+	if rawChatID, exists := meta["ChatID"]; exists {
+		chatID = normalizeEntryChatID(rawChatID)
+		if !isValidTODOChatID(chatID) {
+			return Entry{}, false
+		}
 	}
 	return Entry{
 		Done:      false,
@@ -239,28 +239,32 @@ func parseWIPEntryLine(line string) (Entry, bool) {
 
 func parseDONEEntryLine(line string) (Entry, bool) {
 	line = strings.TrimSpace(line)
-	if !strings.HasPrefix(line, "- [x] CreatedAt: ") {
+	if !strings.HasPrefix(line, "- [x] ") {
 		return Entry{}, false
 	}
-	rest := strings.TrimPrefix(line, "- [x] CreatedAt: ")
-	parts := strings.SplitN(rest, ", DoneAt: ", 2)
-	if len(parts) != 2 {
+	rest := strings.TrimSpace(strings.TrimPrefix(line, "- [x] "))
+	metaRaw, content, ok := splitEntryMetadataAndContent(rest)
+	if !ok {
 		return Entry{}, false
 	}
-	createdAt := strings.TrimSpace(parts[0])
-	parts = strings.SplitN(parts[1], " - ", 2)
-	if len(parts) != 2 {
+	meta, ok := parseEntryMetadata(metaRaw)
+	if !ok || content == "" {
 		return Entry{}, false
 	}
-	doneAt := strings.TrimSpace(parts[0])
-	content := strings.TrimSpace(parts[1])
-	if !validTimestamp(createdAt) || !validTimestamp(doneAt) || content == "" {
+	createdAt, ok := meta["Created"]
+	if !ok || !validTimestamp(createdAt) {
+		return Entry{}, false
+	}
+	doneAt, ok := meta["Done"]
+	if !ok || !validTimestamp(doneAt) {
 		return Entry{}, false
 	}
 	chatID := ""
-	if parsedChatID, parsedContent, ok := splitChatIDPrefix(content); ok {
-		chatID = parsedChatID
-		content = parsedContent
+	if rawChatID, exists := meta["ChatID"]; exists {
+		chatID = normalizeEntryChatID(rawChatID)
+		if !isValidTODOChatID(chatID) {
+			return Entry{}, false
+		}
 	}
 	return Entry{
 		Done:      true,
@@ -277,11 +281,15 @@ func renderWIPEntryLine(item Entry) string {
 	if content == "" || !validTimestamp(createdAt) {
 		return ""
 	}
+	meta := []string{formatMetadataTuple("Created", createdAt)}
 	chatID := normalizeEntryChatID(item.ChatID)
 	if chatID != "" {
-		return "- [ ] CreatedAt: " + createdAt + " - ChatID: " + chatID + " - " + content
+		if !isValidTODOChatID(chatID) {
+			return ""
+		}
+		meta = append(meta, formatMetadataTuple("ChatID", chatID))
 	}
-	return "- [ ] CreatedAt: " + createdAt + " - " + content
+	return "- [ ] " + strings.Join(meta, ", ") + " | " + content
 }
 
 func renderDONEEntryLine(item Entry) string {
@@ -291,40 +299,66 @@ func renderDONEEntryLine(item Entry) string {
 	if content == "" || !validTimestamp(createdAt) || !validTimestamp(doneAt) {
 		return ""
 	}
+	meta := []string{
+		formatMetadataTuple("Created", createdAt),
+		formatMetadataTuple("Done", doneAt),
+	}
 	chatID := normalizeEntryChatID(item.ChatID)
 	if chatID != "" {
-		return "- [x] CreatedAt: " + createdAt + ", DoneAt: " + doneAt + " - ChatID: " + chatID + " - " + content
+		if !isValidTODOChatID(chatID) {
+			return ""
+		}
+		meta = append(meta, formatMetadataTuple("ChatID", chatID))
 	}
-	return "- [x] CreatedAt: " + createdAt + ", DoneAt: " + doneAt + " - " + content
+	return "- [x] " + strings.Join(meta, ", ") + " | " + content
 }
 
-func splitChatIDPrefix(content string) (string, string, bool) {
-	content = strings.TrimSpace(content)
-	lower := strings.ToLower(content)
-	prefix := ""
-	switch {
-	case strings.HasPrefix(lower, "chatid:"):
-		prefix = "chatid:"
-	case strings.HasPrefix(lower, "channel:"):
-		// Keep backward compatibility with older TODO files.
-		prefix = "channel:"
-	default:
-		return "", content, false
-	}
-	rest := strings.TrimSpace(content[len(prefix):])
-	parts := strings.SplitN(rest, " - ", 2)
+func splitEntryMetadataAndContent(raw string) (string, string, bool) {
+	raw = strings.TrimSpace(raw)
+	parts := strings.SplitN(raw, " | ", 2)
 	if len(parts) != 2 {
-		return "", content, false
+		return "", "", false
 	}
-	chatID := normalizeEntryChatID(parts[0])
-	body := strings.TrimSpace(parts[1])
-	if body == "" || !isValidTODOChatID(chatID) {
-		return "", content, false
+	meta := strings.TrimSpace(parts[0])
+	content := strings.TrimSpace(parts[1])
+	if meta == "" || content == "" {
+		return "", "", false
 	}
-	return chatID, body, true
+	return meta, content, true
 }
 
-// splitChannelPrefix is kept for backward compatibility in older call sites.
-func splitChannelPrefix(content string) (string, string, bool) {
-	return splitChatIDPrefix(content)
+func parseEntryMetadata(raw string) (map[string]string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, false
+	}
+	parts := strings.Split(raw, ",")
+	out := make(map[string]string, len(parts))
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if item == "" {
+			return nil, false
+		}
+		matches := metadataTuplePattern.FindStringSubmatch(item)
+		if len(matches) != 3 {
+			return nil, false
+		}
+		key := strings.TrimSpace(matches[1])
+		val := strings.TrimSpace(matches[2])
+		if key == "" || val == "" {
+			return nil, false
+		}
+		if _, exists := out[key]; exists {
+			return nil, false
+		}
+		out[key] = val
+	}
+	if len(out) == 0 {
+		return nil, false
+	}
+	return out, true
+}
+
+func formatMetadataTuple(key string, value string) string {
+	return "[" + strings.TrimSpace(key) + "](" + strings.TrimSpace(value) + ")"
 }

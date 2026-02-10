@@ -20,7 +20,7 @@ func TestLoadContactSnapshot(t *testing.T) {
 		Kind:            contacts.KindHuman,
 		Channel:         contacts.ChannelTelegram,
 		TGUsername:      "john",
-		TGPrivateChatID:   1001,
+		TGPrivateChatID: 1001,
 	}, now)
 	if err != nil {
 		t.Fatalf("UpsertContact(john) error = %v", err)
@@ -68,13 +68,13 @@ func TestValidateReachableReferences(t *testing.T) {
 		ReachableIDs: []string{"maep:12D3KooWJohn", "tg:1001"},
 	}
 
-	if err := ValidateReachableReferences("提醒 John (tg:1001) 明天确认", snap); err != nil {
+	if err := ValidateReachableReferences("提醒 [John](tg:1001) 明天确认", snap); err != nil {
 		t.Fatalf("ValidateReachableReferences(snapshot tg id) error = %v", err)
 	}
-	if err := ValidateReachableReferences("提醒 John (maep:12D3KooWJohn) 明天确认", snap); err != nil {
+	if err := ValidateReachableReferences("提醒 [John](maep:12D3KooWJohn) 明天确认", snap); err != nil {
 		t.Fatalf("ValidateReachableReferences(snapshot id) error = %v", err)
 	}
-	err := ValidateReachableReferences("提醒 John (maep:unknown) 明天确认", snap)
+	err := ValidateReachableReferences("提醒 [John](maep:unknown) 明天确认", snap)
 	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "not reachable") {
 		t.Fatalf("expected not reachable error, got %v", err)
 	}

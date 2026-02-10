@@ -15,7 +15,6 @@ var (
 	refIDPatternC = regexp.MustCompile(`^maep:[A-Za-z0-9._-]+$`)
 	refIDPatternD = regexp.MustCompile(`^slack:[A-Za-z0-9._:-]+$`)
 	refIDPatternE = regexp.MustCompile(`^discord:[A-Za-z0-9._:-]+$`)
-	parenPattern  = regexp.MustCompile(`\(([^()]+)\)`)
 )
 
 func (s *Store) Add(ctx context.Context, raw string) (UpdateResult, error) {

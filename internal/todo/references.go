@@ -5,13 +5,13 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"unicode/utf8"
 )
 
 var (
-	// Strip already-annotated mentions like "John (tg:1001)" before
+	// Strip already-annotated mentions like "[John](tg:1001)" before
 	// scanning for missing first-person references.
-	annotatedMentionPattern = regexp.MustCompile(`[^()\s]+\s*\([^()]+\)`)
+	referenceLinkPattern    = regexp.MustCompile(`\[[^\[\]\n]+\]\(([^()]+)\)`)
+	annotatedMentionPattern = regexp.MustCompile(`\[[^\[\]\n]+\]\([^()]+\)`)
 	englishSelfWordPattern  = regexp.MustCompile(`(?i)\b(i|me|my|myself|we|us|our|ourselves)\b`)
 )
 
@@ -20,7 +20,7 @@ func ExtractReferenceIDs(content string) ([]string, error) {
 	if content == "" {
 		return nil, fmt.Errorf("content is required")
 	}
-	matches := parenPattern.FindAllStringSubmatch(content, -1)
+	matches := referenceLinkPattern.FindAllStringSubmatch(content, -1)
 	if len(matches) == 0 {
 		return nil, nil
 	}
@@ -65,7 +65,7 @@ func ValidateReachableReferences(content string, snapshot ContactSnapshot) error
 }
 
 // ValidateRequiredReferenceMentions enforces that first-person object mentions
-// are explicitly referenceable (e.g. "我 (tg:1001)" / "me (tg:1001)").
+// are explicitly referenceable (e.g. "[我](tg:1001)" / "[me](tg:1001)").
 func ValidateRequiredReferenceMentions(content string, snapshot ContactSnapshot) error {
 	content = strings.TrimSpace(content)
 	if content == "" {
@@ -79,13 +79,13 @@ func ValidateRequiredReferenceMentions(content string, snapshot ContactSnapshot)
 
 	item := MissingReference{Mention: mention}
 	if ref := suggestSelfReferenceID(snapshot); ref != "" {
-		item.Suggestion = strings.TrimSpace(mention) + " (" + ref + ")"
+		item.Suggestion = formatMentionLink(mention, ref)
 	}
 	return &MissingReferenceIDError{Items: []MissingReference{item}}
 }
 
 // AnnotateFirstPersonReference rewrites one unannotated first-person mention
-// into "mention (refID)". It returns (rewritten, changed, error).
+// into "[mention](refID)". It returns (rewritten, changed, error).
 func AnnotateFirstPersonReference(content string, refID string) (string, bool, error) {
 	content = strings.TrimSpace(content)
 	refID = strings.TrimSpace(refID)
@@ -104,12 +104,13 @@ func AnnotateFirstPersonReference(content string, refID string) (string, bool, e
 		return content, false, nil
 	}
 
+	linkRanges := markdownLinkRanges(content)
 	for _, token := range []string{"我们", "本人", "我"} {
-		if rewritten, ok := annotateFirstUnannotatedLiteral(content, token, refID); ok {
+		if rewritten, ok := annotateFirstUnannotatedLiteral(content, token, refID, linkRanges); ok {
 			return rewritten, true, nil
 		}
 	}
-	if rewritten, ok := annotateFirstUnannotatedEnglishSelf(content, refID); ok {
+	if rewritten, ok := annotateFirstUnannotatedEnglishSelf(content, refID, linkRanges); ok {
 		return rewritten, true, nil
 	}
 	return content, false, nil
@@ -131,7 +132,7 @@ func firstPersonMention(content string) string {
 	return ""
 }
 
-func annotateFirstUnannotatedLiteral(content string, token string, refID string) (string, bool) {
+func annotateFirstUnannotatedLiteral(content string, token string, refID string, ranges [][2]int) (string, bool) {
 	token = strings.TrimSpace(token)
 	if token == "" {
 		return content, false
@@ -144,16 +145,16 @@ func annotateFirstUnannotatedLiteral(content string, token string, refID string)
 		}
 		start := searchPos + off
 		end := start + len(token)
-		if hasInlineReferenceSuffix(content, end) {
+		if withinMarkdownLink(ranges, start, end) {
 			searchPos = end
 			continue
 		}
-		annotated := token + " (" + refID + ")" + annotationSpacer(content, end)
+		annotated := formatMentionLink(token, refID)
 		return content[:start] + annotated + content[end:], true
 	}
 }
 
-func annotateFirstUnannotatedEnglishSelf(content string, refID string) (string, bool) {
+func annotateFirstUnannotatedEnglishSelf(content string, refID string, ranges [][2]int) (string, bool) {
 	indices := englishSelfWordPattern.FindAllStringIndex(content, -1)
 	for _, pair := range indices {
 		if len(pair) != 2 {
@@ -163,48 +164,47 @@ func annotateFirstUnannotatedEnglishSelf(content string, refID string) (string, 
 		if start < 0 || end > len(content) || start >= end {
 			continue
 		}
-		if hasInlineReferenceSuffix(content, end) {
+		if withinMarkdownLink(ranges, start, end) {
 			continue
 		}
 		word := content[start:end]
-		annotated := word + " (" + refID + ")" + annotationSpacer(content, end)
+		annotated := formatMentionLink(word, refID)
 		return content[:start] + annotated + content[end:], true
 	}
 	return content, false
 }
 
-func hasInlineReferenceSuffix(content string, pos int) bool {
-	if pos < 0 {
-		pos = 0
+func markdownLinkRanges(content string) [][2]int {
+	indices := annotatedMentionPattern.FindAllStringIndex(content, -1)
+	if len(indices) == 0 {
+		return nil
 	}
-	for pos < len(content) {
-		switch content[pos] {
-		case ' ', '\t':
-			pos++
+	out := make([][2]int, 0, len(indices))
+	for _, pair := range indices {
+		if len(pair) != 2 || pair[0] < 0 || pair[1] <= pair[0] || pair[1] > len(content) {
 			continue
-		case '(':
+		}
+		out = append(out, [2]int{pair[0], pair[1]})
+	}
+	return out
+}
+
+func withinMarkdownLink(ranges [][2]int, start int, end int) bool {
+	if len(ranges) == 0 || start < 0 || end <= start {
+		return false
+	}
+	for _, pair := range ranges {
+		if start >= pair[0] && end <= pair[1] {
 			return true
-		default:
-			return false
 		}
 	}
 	return false
 }
 
-func annotationSpacer(content string, pos int) string {
-	if pos < 0 || pos >= len(content) {
-		return ""
-	}
-	r, _ := utf8.DecodeRuneInString(content[pos:])
-	switch r {
-	case ' ', '\t', '\n',
-		',', '.', '!', '?', ':', ';',
-		'，', '。', '！', '？', '：', '；', '、',
-		')', ']', '}', '】', '）':
-		return ""
-	default:
-		return " "
-	}
+func formatMentionLink(label string, refID string) string {
+	label = strings.TrimSpace(label)
+	refID = strings.TrimSpace(refID)
+	return "[" + label + "](" + refID + ")"
 }
 
 func suggestSelfReferenceID(snapshot ContactSnapshot) string {

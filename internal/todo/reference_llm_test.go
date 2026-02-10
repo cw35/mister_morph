@@ -10,7 +10,7 @@ import (
 func TestLLMReferenceResolverResolveAddContentOK(t *testing.T) {
 	client := &stubTodoLLMClient{
 		replies: []string{
-			`{"status":"ok","rewritten_content":"提醒 John (tg:1001) 明天确认","warnings":["  x  ","x",""]}`,
+			`{"status":"ok","rewritten_content":"提醒 [John](tg:1001) 明天确认","warnings":["  x  ","x",""]}`,
 		},
 	}
 	resolver := NewLLMReferenceResolver(client, "gpt-5.2")
@@ -30,7 +30,7 @@ func TestLLMReferenceResolverResolveAddContentOK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveAddContent() error = %v", err)
 	}
-	if rewritten != "提醒 John (tg:1001) 明天确认" {
+	if rewritten != "提醒 [John](tg:1001) 明天确认" {
 		t.Fatalf("rewritten mismatch: %q", rewritten)
 	}
 	if len(warnings) != 1 || warnings[0] != "x" {
@@ -75,7 +75,7 @@ func TestLLMReferenceResolverResolveAddContentOK(t *testing.T) {
 func TestLLMReferenceResolverResolveAddContentMissingReference(t *testing.T) {
 	client := &stubTodoLLMClient{
 		replies: []string{
-			`{"status":"missing_reference_id","missing":[{"mention":"John","suggestion":"John (tg:1001)"}]}`,
+			`{"status":"missing_reference_id","missing":[{"mention":"John","suggestion":"[John](tg:1001)"}]}`,
 		},
 	}
 	resolver := NewLLMReferenceResolver(client, "gpt-5.2")

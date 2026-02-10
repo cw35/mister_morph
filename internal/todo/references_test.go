@@ -26,7 +26,7 @@ func TestValidateRequiredReferenceMentions_FirstPersonWithReference(t *testing.T
 	snap := ContactSnapshot{
 		ReachableIDs: []string{"tg:1001"},
 	}
-	if err := ValidateRequiredReferenceMentions("今晚20点提醒我 (tg:1001) 看球赛", snap); err != nil {
+	if err := ValidateRequiredReferenceMentions("今晚20点提醒[我](tg:1001)看球赛", snap); err != nil {
 		t.Fatalf("ValidateRequiredReferenceMentions() error = %v", err)
 	}
 }
@@ -53,13 +53,13 @@ func TestAnnotateFirstPersonReference(t *testing.T) {
 	if !changed {
 		t.Fatalf("expected changed=true")
 	}
-	if out != "今晚20点提醒我 (tg:1001) 看球赛" {
+	if out != "今晚20点提醒[我](tg:1001)看球赛" {
 		t.Fatalf("unexpected output: %q", out)
 	}
 }
 
 func TestAnnotateFirstPersonReference_NoChangeWhenAlreadyAnnotated(t *testing.T) {
-	in := "今晚20点提醒我 (tg:1001) 看球赛"
+	in := "今晚20点提醒[我](tg:1001)看球赛"
 	out, changed, err := AnnotateFirstPersonReference(in, "tg:1001")
 	if err != nil {
 		t.Fatalf("AnnotateFirstPersonReference() error = %v", err)

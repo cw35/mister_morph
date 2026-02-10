@@ -42,14 +42,14 @@ func TestTodoUpdateTool(t *testing.T) {
 
 	client := &stubTodoToolLLMClient{
 		replies: []string{
-			`{"status":"ok","rewritten_content":"提醒 John (tg:1001) 和 Momo (maep:12D3KooWPeer) 对齐消息内容"}`,
+			`{"status":"ok","rewritten_content":"提醒 [John](tg:1001) 和 [Momo](maep:12D3KooWPeer) 对齐消息内容"}`,
 			`{"status":"matched","index":0}`,
 		},
 	}
 	update := NewTodoUpdateToolWithLLM(true, wip, done, contactsDir, client, "gpt-5.2")
 	out, err := update.Execute(context.Background(), map[string]any{
 		"action":  "add",
-		"content": "提醒 John (tg:1001) 和 Momo (maep:12D3KooWPeer) 对齐消息内容",
+		"content": "提醒 [John](tg:1001) 和 [Momo](maep:12D3KooWPeer) 对齐消息内容",
 		"people":  []any{"John", "Momo"},
 	})
 	if err != nil {
@@ -102,7 +102,7 @@ func TestTodoUpdateToolAddWithChatIDParam(t *testing.T) {
 
 	client := &stubTodoToolLLMClient{
 		replies: []string{
-			`{"status":"ok","rewritten_content":"提醒 John (tg:1001) 提交评估报告"}`,
+			`{"status":"ok","rewritten_content":"提醒 [John](tg:1001) 提交评估报告"}`,
 		},
 	}
 	update := NewTodoUpdateToolWithLLM(true, wip, done, contactsDir, client, "gpt-5.2")
@@ -154,7 +154,7 @@ func TestTodoUpdateToolAddRejectsInvalidChatID(t *testing.T) {
 
 	client := &stubTodoToolLLMClient{
 		replies: []string{
-			`{"status":"ok","rewritten_content":"提醒 John (tg:1001) 提交评估报告"}`,
+			`{"status":"ok","rewritten_content":"提醒 [John](tg:1001) 提交评估报告"}`,
 		},
 	}
 	update := NewTodoUpdateToolWithLLM(true, wip, done, contactsDir, client, "gpt-5.2")
@@ -177,7 +177,7 @@ func TestTodoUpdateRequiresLLMBinding(t *testing.T) {
 	update := NewTodoUpdateTool(true, filepath.Join(root, "TODO.md"), filepath.Join(root, "TODO.DONE.md"), filepath.Join(root, "contacts"))
 	_, err := update.Execute(context.Background(), map[string]any{
 		"action":  "add",
-		"content": "提醒 John (tg:1001) 对齐信息",
+		"content": "提醒 [John](tg:1001) 对齐信息",
 		"people":  []any{"John"},
 	})
 	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "missing llm client") {
@@ -205,7 +205,7 @@ func TestTodoUpdateCompleteDoesNotRequirePeople(t *testing.T) {
 	seedTodoContacts(t, contactsDir)
 	client := &stubTodoToolLLMClient{
 		replies: []string{
-			`{"status":"ok","rewritten_content":"提醒 John (tg:1001) 准备草稿"}`,
+			`{"status":"ok","rewritten_content":"提醒 [John](tg:1001) 准备草稿"}`,
 			`{"status":"matched","index":0}`,
 		},
 	}
@@ -235,8 +235,8 @@ func TestTodoUpdateCompleteAmbiguousFromLLM(t *testing.T) {
 	seedTodoContacts(t, contactsDir)
 	client := &stubTodoToolLLMClient{
 		replies: []string{
-			`{"status":"ok","rewritten_content":"提醒 John (tg:1001) 准备一版草稿"}`,
-			`{"status":"ok","rewritten_content":"提醒 John (tg:1001) 和 Momo (maep:12D3KooWPeer) 确认草稿"}`,
+			`{"status":"ok","rewritten_content":"提醒 [John](tg:1001) 准备一版草稿"}`,
+			`{"status":"ok","rewritten_content":"提醒 [John](tg:1001) 和 [Momo](maep:12D3KooWPeer) 确认草稿"}`,
 			`{"keep_indices":[0,1]}`,
 			`{"status":"ambiguous","candidate_indices":[0,1]}`,
 		},
@@ -245,7 +245,7 @@ func TestTodoUpdateCompleteAmbiguousFromLLM(t *testing.T) {
 
 	_, err := update.Execute(context.Background(), map[string]any{
 		"action":  "add",
-		"content": "提醒 John (tg:1001) 准备一版草稿",
+		"content": "提醒 [John](tg:1001) 准备一版草稿",
 		"people":  []any{"John"},
 	})
 	if err != nil {
@@ -253,7 +253,7 @@ func TestTodoUpdateCompleteAmbiguousFromLLM(t *testing.T) {
 	}
 	_, err = update.Execute(context.Background(), map[string]any{
 		"action":  "add",
-		"content": "提醒 John (tg:1001) 和 Momo (maep:12D3KooWPeer) 确认草稿",
+		"content": "提醒 [John](tg:1001) 和 [Momo](maep:12D3KooWPeer) 确认草稿",
 		"people":  []any{"John", "Momo"},
 	})
 	if err != nil {
@@ -275,7 +275,7 @@ func TestTodoUpdateAddRejectsInvalidReferenceBeforeLLM(t *testing.T) {
 	update := NewTodoUpdateToolWithLLM(true, filepath.Join(root, "TODO.md"), filepath.Join(root, "TODO.DONE.md"), filepath.Join(root, "contacts"), client, "gpt-5.2")
 	_, err := update.Execute(context.Background(), map[string]any{
 		"action":  "add",
-		"content": "提醒 John (not-a-reference) 明天确认内容",
+		"content": "提醒 [John](not-a-reference) 明天确认内容",
 		"people":  []any{"John"},
 	})
 	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "invalid reference id") {
@@ -290,7 +290,7 @@ func TestTodoUpdateAddMissingReferenceIDFallbackWritesRaw(t *testing.T) {
 	root := t.TempDir()
 	client := &stubTodoToolLLMClient{
 		replies: []string{
-			`{"status":"missing_reference_id","missing":[{"mention":"John","suggestion":"John (tg:1001)"}]}`,
+			`{"status":"missing_reference_id","missing":[{"mention":"John","suggestion":"[John](tg:1001)"}]}`,
 		},
 	}
 	update := NewTodoUpdateToolWithLLM(true, filepath.Join(root, "TODO.md"), filepath.Join(root, "TODO.DONE.md"), filepath.Join(root, "contacts"), client, "gpt-5.2")
@@ -371,7 +371,7 @@ func TestTodoUpdateAddSelfReferenceResolvedFromTelegramContext(t *testing.T) {
 
 	client := &stubTodoToolLLMClient{
 		replies: []string{
-			`{"status":"ok","rewritten_content":"今晚20点提醒我 (tg:1001) 看球赛"}`,
+			`{"status":"ok","rewritten_content":"今晚20点提醒[我](tg:1001) 看球赛"}`,
 		},
 	}
 	update := NewTodoUpdateToolWithLLM(true, wip, done, contactsDir, client, "gpt-5.2")
@@ -403,7 +403,7 @@ func TestTodoUpdateAddSelfReferenceResolvedFromTelegramContext(t *testing.T) {
 	if !parsed.OK {
 		t.Fatalf("expected ok=true, got %s", out)
 	}
-	if !strings.Contains(parsed.Entry.Content, "我 (tg:1001)") {
+	if !strings.Contains(parsed.Entry.Content, "[我](tg:1001)") {
 		t.Fatalf("expected self reference id resolved, got: %q", parsed.Entry.Content)
 	}
 	if len(client.calls) != 1 {
