@@ -97,7 +97,7 @@ func (t *TodoUpdateTool) ParameterSchema() string {
 			},
 			"chat_id": map[string]any{
 				"type":        "string",
-				"description": "Optional task context Telegram chat id (for example tg:-1001234567890).",
+				"description": "Optional task context chat id (for example tg:-1001234567890).",
 			},
 		},
 		"required": []string{"action", "content"},
