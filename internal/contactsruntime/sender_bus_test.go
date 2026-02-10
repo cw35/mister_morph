@@ -41,7 +41,7 @@ func TestRoutingSenderSendTelegramViaBus(t *testing.T) {
 		ContactID:     "tg:12345",
 		Kind:          contacts.KindHuman,
 		Channel:       contacts.ChannelTelegram,
-		PrivateChatID: 12345,
+		TGPrivateChatID: 12345,
 	}, contacts.ShareDecision{
 		ContactID:      "tg:12345",
 		ItemID:         "cand_1",
@@ -131,7 +131,7 @@ func TestRoutingSenderSendFailsWithoutIdempotencyKey(t *testing.T) {
 		ContactID:     "tg:12345",
 		Kind:          contacts.KindHuman,
 		Channel:       contacts.ChannelTelegram,
-		PrivateChatID: 12345,
+		TGPrivateChatID: 12345,
 	}, contacts.ShareDecision{
 		ContactID:     "tg:12345",
 		ItemID:        "cand_3",

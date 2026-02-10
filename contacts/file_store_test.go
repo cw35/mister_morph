@@ -31,8 +31,8 @@ func TestFileStoreContactsReadWrite(t *testing.T) {
 		Channel:          ChannelTelegram,
 		ContactNickname:  "Inactive Human",
 		TGUsername:       "john",
-		PrivateChatID:    1001,
-		GroupChatIDs:     []int64{-10001},
+		TGPrivateChatID:    1001,
+		TGGroupChatIDs:     []int64{-10001},
 		TopicPreferences: []string{"planning"},
 	}
 	if err := store.PutContact(ctx, active); err != nil {
@@ -63,8 +63,8 @@ func TestFileStoreContactsReadWrite(t *testing.T) {
 	if len(inactiveList) != 1 || inactiveList[0].ContactID != inactive.ContactID {
 		t.Fatalf("inactive contacts mismatch: got=%v", inactiveList)
 	}
-	if inactiveList[0].PrivateChatID != 1001 {
-		t.Fatalf("inactive private_chat_id mismatch: got %d want 1001", inactiveList[0].PrivateChatID)
+	if inactiveList[0].TGPrivateChatID != 1001 {
+		t.Fatalf("inactive tg_private_chat_id mismatch: got %d want 1001", inactiveList[0].TGPrivateChatID)
 	}
 }
 
@@ -165,8 +165,8 @@ nickname: "Alice"
 kind: "human"
 channel: "telegram"
 tg_username: "alice"
-private_chat_id: "90001"
-group_chat_ids:
+tg_private_chat_id: "90001"
+tg_group_chat_ids:
   - "-100222"
 topic_preferences:
   - "golang"
@@ -203,7 +203,7 @@ maep_dial_address: "/ip4/127.0.0.1/tcp/4021/p2p/12D3KooWPeerX"
 	if active[0].ContactID != "tg:90001" || active[0].Kind != KindHuman {
 		t.Fatalf("active contact mismatch: %#v", active[0])
 	}
-	if active[0].PrivateChatID != 90001 {
+	if active[0].TGPrivateChatID != 90001 {
 		t.Fatalf("active private chat id mismatch: %#v", active[0])
 	}
 

@@ -32,8 +32,8 @@ type Contact struct {
 	Channel           string     `json:"channel"`
 	ContactNickname   string     `json:"nickname,omitempty"`
 	TGUsername        string     `json:"tg_username,omitempty"`
-	PrivateChatID     int64      `json:"private_chat_id,omitempty"`
-	GroupChatIDs      []int64    `json:"group_chat_ids,omitempty"`
+	TGPrivateChatID     int64      `json:"tg_private_chat_id,omitempty"`
+	TGGroupChatIDs      []int64    `json:"tg_group_chat_ids,omitempty"`
 	MAEPNodeID        string     `json:"maep_node_id,omitempty"`
 	MAEPDialAddress   string     `json:"maep_dial_address,omitempty"`
 	PersonaBrief      string     `json:"persona_brief,omitempty"`

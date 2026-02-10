@@ -413,8 +413,8 @@ type contactProfileSection struct {
 	Kind              string   `yaml:"kind"`
 	Channel           string   `yaml:"channel"`
 	TGUsername        string   `yaml:"tg_username"`
-	PrivateChatID     string   `yaml:"private_chat_id"`
-	GroupChatIDs      []string `yaml:"group_chat_ids"`
+	TGPrivateChatID     string   `yaml:"tg_private_chat_id"`
+	TGGroupChatIDs      []string `yaml:"tg_group_chat_ids"`
 	MAEPNodeID        string   `yaml:"maep_node_id"`
 	MAEPDialAddress   string   `yaml:"maep_dial_address"`
 	PersonaBrief      string   `yaml:"persona_brief"`
@@ -583,15 +583,15 @@ func contactFromProfileSection(title string, profile contactProfileSection, stat
 		contact.ContactNickname = strings.TrimSpace(title)
 	}
 
-	privateChatID, err := parseTelegramChatID(profile.PrivateChatID)
+	privateChatID, err := parseTelegramChatID(profile.TGPrivateChatID)
 	if err != nil {
 		return Contact{}, err
 	}
 	if privateChatID > 0 {
-		contact.PrivateChatID = privateChatID
+		contact.TGPrivateChatID = privateChatID
 	}
-	groupChatIDs := make([]int64, 0, len(profile.GroupChatIDs))
-	for _, raw := range profile.GroupChatIDs {
+	groupChatIDs := make([]int64, 0, len(profile.TGGroupChatIDs))
+	for _, raw := range profile.TGGroupChatIDs {
 		id, parseErr := parseTelegramChatID(raw)
 		if parseErr != nil {
 			return Contact{}, parseErr
@@ -600,7 +600,7 @@ func contactFromProfileSection(title string, profile contactProfileSection, stat
 			groupChatIDs = append(groupChatIDs, id)
 		}
 	}
-	contact.GroupChatIDs = groupChatIDs
+	contact.TGGroupChatIDs = groupChatIDs
 
 	nodeID, _ := splitMAEPNodeID(profile.MAEPNodeID)
 	contact.MAEPNodeID = nodeID
@@ -664,7 +664,7 @@ func profileSectionFromContact(contact Contact) (contactProfileSection, string) 
 
 	if profile.Channel == "" {
 		switch {
-		case contact.PrivateChatID != 0 || len(contact.GroupChatIDs) > 0 || profile.TGUsername != "":
+		case contact.TGPrivateChatID != 0 || len(contact.TGGroupChatIDs) > 0 || profile.TGUsername != "":
 			profile.Channel = ChannelTelegram
 		case profile.MAEPNodeID != "":
 			profile.Channel = ChannelMAEP
@@ -678,12 +678,12 @@ func profileSectionFromContact(contact Contact) (contactProfileSection, string) 
 			profile.TGUsername = alias
 		}
 	}
-	if contact.PrivateChatID != 0 {
-		profile.PrivateChatID = strconv.FormatInt(contact.PrivateChatID, 10)
+	if contact.TGPrivateChatID != 0 {
+		profile.TGPrivateChatID = strconv.FormatInt(contact.TGPrivateChatID, 10)
 	}
-	if len(contact.GroupChatIDs) > 0 {
-		ids := make([]int64, 0, len(contact.GroupChatIDs))
-		ids = append(ids, contact.GroupChatIDs...)
+	if len(contact.TGGroupChatIDs) > 0 {
+		ids := make([]int64, 0, len(contact.TGGroupChatIDs))
+		ids = append(ids, contact.TGGroupChatIDs...)
 		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 		out := make([]string, 0, len(ids))
 		seen := map[string]bool{}
@@ -695,7 +695,7 @@ func profileSectionFromContact(contact Contact) (contactProfileSection, string) 
 			seen[value] = true
 			out = append(out, value)
 		}
-		profile.GroupChatIDs = out
+		profile.TGGroupChatIDs = out
 	}
 	if profile.MAEPNodeID == "" {
 		nodeID, _ := splitMAEPNodeID(contact.ContactID)
@@ -944,9 +944,9 @@ func normalizeContact(c Contact, now time.Time) Contact {
 	c.TGUsername = normalizeTelegramUsername(c.TGUsername)
 	c.Kind = normalizeKind(c.Kind)
 	c.Channel = normalizeContactChannel(c.Channel)
-	c.GroupChatIDs = normalizeInt64Slice(c.GroupChatIDs)
-	if c.PrivateChatID <= 0 {
-		c.PrivateChatID = 0
+	c.TGGroupChatIDs = normalizeInt64Slice(c.TGGroupChatIDs)
+	if c.TGPrivateChatID <= 0 {
+		c.TGPrivateChatID = 0
 	}
 	nodeID, _ := splitMAEPNodeID(c.MAEPNodeID)
 	c.MAEPNodeID = nodeID
@@ -982,7 +982,7 @@ func normalizeContact(c Contact, now time.Time) Contact {
 
 	if c.Channel == "" {
 		switch {
-		case strings.HasPrefix(strings.ToLower(c.ContactID), "tg:"), c.PrivateChatID != 0, len(c.GroupChatIDs) > 0, c.TGUsername != "":
+		case strings.HasPrefix(strings.ToLower(c.ContactID), "tg:"), c.TGPrivateChatID != 0, len(c.TGGroupChatIDs) > 0, c.TGUsername != "":
 			c.Channel = ChannelTelegram
 		case strings.HasPrefix(strings.ToLower(c.ContactID), "maep:"), c.MAEPNodeID != "", c.MAEPDialAddress != "":
 			c.Channel = ChannelMAEP
@@ -999,10 +999,10 @@ func normalizeContact(c Contact, now time.Time) Contact {
 	if strings.HasPrefix(strings.ToLower(c.ContactID), "tg:@") && c.TGUsername == "" {
 		c.TGUsername = normalizeTelegramUsername(c.ContactID[len("tg:@"):])
 	}
-	if strings.HasPrefix(strings.ToLower(c.ContactID), "tg:") && c.PrivateChatID == 0 {
+	if strings.HasPrefix(strings.ToLower(c.ContactID), "tg:") && c.TGPrivateChatID == 0 {
 		id, err := parseTelegramChatID(c.ContactID[len("tg:"):])
 		if err == nil && id > 0 {
-			c.PrivateChatID = id
+			c.TGPrivateChatID = id
 		}
 	}
 	if strings.HasPrefix(strings.ToLower(c.ContactID), "maep:") && c.MAEPNodeID == "" {
@@ -1010,7 +1010,7 @@ func normalizeContact(c Contact, now time.Time) Contact {
 		c.MAEPNodeID = node
 	}
 
-	if c.TGUsername == "" && c.PrivateChatID == 0 && len(c.GroupChatIDs) == 0 && c.Channel == ChannelTelegram {
+	if c.TGUsername == "" && c.TGPrivateChatID == 0 && len(c.TGGroupChatIDs) == 0 && c.Channel == ChannelTelegram {
 		if alias := extractTelegramAlias(c.ContactID); alias != "" {
 			c.TGUsername = alias
 		}

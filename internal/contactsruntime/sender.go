@@ -594,7 +594,7 @@ func ResolveTelegramTarget(contact contacts.Contact) (any, string, error) {
 		}
 		return chatID, chatTypeFromChatID(chatID), nil
 	}
-	return nil, "", fmt.Errorf("telegram target not found in private_chat_id/group_chat_ids/contact_id")
+	return nil, "", fmt.Errorf("telegram target not found in tg_private_chat_id/tg_group_chat_ids/contact_id")
 }
 
 func IsPublicTelegramTarget(target any, resolvedChatType string) bool {
@@ -612,8 +612,8 @@ func IsPublicTelegramTarget(target any, resolvedChatType string) bool {
 }
 
 func preferredChat(contact contacts.Contact) (int64, string, bool) {
-	privateChatID := contact.PrivateChatID
-	groupIDs := append([]int64(nil), contact.GroupChatIDs...)
+	privateChatID := contact.TGPrivateChatID
+	groupIDs := append([]int64(nil), contact.TGGroupChatIDs...)
 	sort.Slice(groupIDs, func(i, j int) bool { return groupIDs[i] < groupIDs[j] })
 	if privateChatID != 0 {
 		return privateChatID, "private", true

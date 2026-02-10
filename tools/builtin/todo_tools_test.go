@@ -341,7 +341,7 @@ func seedTodoContacts(t *testing.T, contactsDir string) {
 		ContactNickname: "John",
 		Kind:            contacts.KindHuman,
 		Channel:         contacts.ChannelTelegram,
-		PrivateChatID:   1001,
+		TGPrivateChatID:   1001,
 	}, now)
 	if err != nil {
 		t.Fatalf("seed john contact error = %v", err)

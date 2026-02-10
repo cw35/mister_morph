@@ -34,8 +34,8 @@ func TestObserveTelegramContact_UpsertByUsername(t *testing.T) {
 	if item.TGUsername != "alice" {
 		t.Fatalf("tg_username mismatch: got %s", item.TGUsername)
 	}
-	if item.PrivateChatID != 90001 {
-		t.Fatalf("private_chat_id mismatch: got %d", item.PrivateChatID)
+	if item.TGPrivateChatID != 90001 {
+		t.Fatalf("tg_private_chat_id mismatch: got %d", item.TGPrivateChatID)
 	}
 	if item.ContactNickname != "Alice L" {
 		t.Fatalf("contact_nickname mismatch: got %q", item.ContactNickname)
@@ -64,7 +64,7 @@ func TestObserveTelegramContact_FallbackToUserID(t *testing.T) {
 	if item.ContactNickname != "Bob" {
 		t.Fatalf("contact_nickname mismatch: got %q", item.ContactNickname)
 	}
-	if len(item.GroupChatIDs) != 1 || item.GroupChatIDs[0] != -100778899 {
-		t.Fatalf("group_chat_ids mismatch: got=%v", item.GroupChatIDs)
+	if len(item.TGGroupChatIDs) != 1 || item.TGGroupChatIDs[0] != -100778899 {
+		t.Fatalf("tg_group_chat_ids mismatch: got=%v", item.TGGroupChatIDs)
 	}
 }

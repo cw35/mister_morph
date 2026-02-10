@@ -13,8 +13,8 @@ func TestResolveTelegramTargetPrefersPrivate(t *testing.T) {
 		ContactID:     "tg:1001",
 		Kind:          contacts.KindHuman,
 		Channel:       contacts.ChannelTelegram,
-		PrivateChatID: 1001,
-		GroupChatIDs:  []int64{-1002233},
+		TGPrivateChatID: 1001,
+		TGGroupChatIDs:  []int64{-1002233},
 	}
 	target, chatType, err := contactsruntime.ResolveTelegramTarget(contact)
 	if err != nil {
@@ -34,8 +34,8 @@ func TestResolveTelegramTargetFallsBackToGroup(t *testing.T) {
 		ContactID:     "tg:1001",
 		Kind:          contacts.KindHuman,
 		Channel:       contacts.ChannelTelegram,
-		PrivateChatID: 0,
-		GroupChatIDs:  []int64{-1008899},
+		TGPrivateChatID: 0,
+		TGGroupChatIDs:  []int64{-1008899},
 	}
 	target, chatType, err := contactsruntime.ResolveTelegramTarget(contact)
 	if err != nil {
@@ -55,8 +55,8 @@ func TestResolveTelegramTargetFallsBackToPrivate(t *testing.T) {
 		ContactID:     "tg:1001",
 		Kind:          contacts.KindHuman,
 		Channel:       contacts.ChannelTelegram,
-		PrivateChatID: 1001,
-		GroupChatIDs:  []int64{-100111},
+		TGPrivateChatID: 1001,
+		TGGroupChatIDs:  []int64{-100111},
 	}
 	target, chatType, err := contactsruntime.ResolveTelegramTarget(contact)
 	if err != nil {

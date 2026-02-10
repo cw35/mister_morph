@@ -3969,10 +3969,10 @@ func observeTelegramContact(ctx context.Context, svc *contacts.Service, chatID i
 			existing.TGUsername = username
 		}
 		if chatType == "private" && chatID > 0 {
-			existing.PrivateChatID = chatID
+			existing.TGPrivateChatID = chatID
 		}
 		if chatType == "group" || chatType == "supergroup" {
-			existing.GroupChatIDs = mergeGroupChatIDs(existing.GroupChatIDs, chatID)
+			existing.TGGroupChatIDs = mergeGroupChatIDs(existing.TGGroupChatIDs, chatID)
 		}
 		if contactNickname != "" {
 			existing.ContactNickname = contactNickname
@@ -3990,10 +3990,10 @@ func observeTelegramContact(ctx context.Context, svc *contacts.Service, chatID i
 		LastInteractionAt: &lastInteraction,
 	}
 	if chatType == "private" && chatID > 0 {
-		record.PrivateChatID = chatID
+		record.TGPrivateChatID = chatID
 	}
 	if chatType == "group" || chatType == "supergroup" {
-		record.GroupChatIDs = []int64{chatID}
+		record.TGGroupChatIDs = []int64{chatID}
 	}
 	_, err = svc.UpsertContact(ctx, record, now)
 	return err

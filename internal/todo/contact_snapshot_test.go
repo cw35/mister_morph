@@ -20,7 +20,7 @@ func TestLoadContactSnapshot(t *testing.T) {
 		Kind:            contacts.KindHuman,
 		Channel:         contacts.ChannelTelegram,
 		TGUsername:      "john",
-		PrivateChatID:   1001,
+		TGPrivateChatID:   1001,
 	}, now)
 	if err != nil {
 		t.Fatalf("UpsertContact(john) error = %v", err)

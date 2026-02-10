@@ -128,11 +128,11 @@ func (s *Service) UpsertContact(ctx context.Context, contact Contact, now time.T
 		if strings.TrimSpace(contact.TGUsername) == "" && strings.TrimSpace(existing.TGUsername) != "" {
 			contact.TGUsername = strings.TrimSpace(existing.TGUsername)
 		}
-		if contact.PrivateChatID == 0 && existing.PrivateChatID != 0 {
-			contact.PrivateChatID = existing.PrivateChatID
+		if contact.TGPrivateChatID == 0 && existing.TGPrivateChatID != 0 {
+			contact.TGPrivateChatID = existing.TGPrivateChatID
 		}
-		if len(contact.GroupChatIDs) == 0 && len(existing.GroupChatIDs) > 0 {
-			contact.GroupChatIDs = append([]int64(nil), existing.GroupChatIDs...)
+		if len(contact.TGGroupChatIDs) == 0 && len(existing.TGGroupChatIDs) > 0 {
+			contact.TGGroupChatIDs = append([]int64(nil), existing.TGGroupChatIDs...)
 		}
 		if strings.TrimSpace(contact.MAEPNodeID) == "" && strings.TrimSpace(existing.MAEPNodeID) != "" {
 			contact.MAEPNodeID = strings.TrimSpace(existing.MAEPNodeID)
@@ -366,10 +366,10 @@ func (s *Service) sendWithBusOutbox(ctx context.Context, now time.Time, contact 
 }
 
 func hasTelegramTarget(contact Contact) bool {
-	if contact.PrivateChatID != 0 {
+	if contact.TGPrivateChatID != 0 {
 		return true
 	}
-	if len(contact.GroupChatIDs) > 0 {
+	if len(contact.TGGroupChatIDs) > 0 {
 		return true
 	}
 	v := strings.TrimSpace(strings.ToLower(contact.ContactID))
@@ -384,8 +384,8 @@ func deriveContactID(contact Contact) string {
 	if v := strings.TrimSpace(contact.ContactID); v != "" {
 		return v
 	}
-	if contact.PrivateChatID > 0 {
-		return "tg:" + strconv.FormatInt(contact.PrivateChatID, 10)
+	if contact.TGPrivateChatID > 0 {
+		return "tg:" + strconv.FormatInt(contact.TGPrivateChatID, 10)
 	}
 	if v := normalizeTelegramUsername(contact.TGUsername); v != "" {
 		return "tg:@" + v
@@ -395,7 +395,7 @@ func deriveContactID(contact Contact) string {
 		return nodeID
 	}
 	if contact.Channel == ChannelTelegram {
-		ids := append([]int64(nil), contact.GroupChatIDs...)
+		ids := append([]int64(nil), contact.TGGroupChatIDs...)
 		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 		for _, id := range ids {
 			if id != 0 {
