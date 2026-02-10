@@ -783,7 +783,6 @@ func newTelegramCmd() *cobra.Command {
 				go func() {
 					var hbMemMgr *memory.Manager
 					var hbTODOStore *todo.Store
-					hbMaxItems := viper.GetInt("memory.injection.max_items")
 					if viper.GetBool("memory.enabled") {
 						hbMemMgr = memory.NewManager(statepaths.MemoryDir(), viper.GetInt("memory.short_term_days"))
 					}
@@ -832,16 +831,7 @@ func newTelegramCmd() *cobra.Command {
 							continue
 						}
 
-						hbSnapshot := ""
-						snap, err := buildHeartbeatProgressSnapshot(nil, hbMaxItems)
-						if err != nil {
-							logger.Warn("telegram_heartbeat_memory_error", "error", err.Error())
-							enqueueSystemWarning(err.Error())
-							broadcastSystemWarnings()
-						} else {
-							hbSnapshot = snap
-						}
-						task, checklistEmpty, err := buildHeartbeatTask(hbChecklist, hbSnapshot)
+						task, checklistEmpty, err := buildHeartbeatTask(hbChecklist)
 						if err != nil {
 							logger.Warn("telegram_heartbeat_task_error", "error", err.Error())
 							enqueueSystemWarning(err.Error())

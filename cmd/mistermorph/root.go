@@ -22,7 +22,6 @@ import (
 	"github.com/quailyquaily/mistermorph/internal/skillsutil"
 	"github.com/quailyquaily/mistermorph/internal/toolsutil"
 	"github.com/quailyquaily/mistermorph/llm"
-	"github.com/quailyquaily/mistermorph/memory"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -124,9 +123,6 @@ func newRootCmd() *cobra.Command {
 		BuildHeartbeatTask: heartbeatutil.BuildHeartbeatTask,
 		BuildHeartbeatMeta: func(source string, interval time.Duration, checklistPath string, checklistEmpty bool, extra map[string]any) map[string]any {
 			return heartbeatutil.BuildHeartbeatMeta(source, interval, checklistPath, checklistEmpty, nil, extra)
-		},
-		BuildHeartbeatProgressSnapshot: func(mgr *memory.Manager, maxItems int) (string, error) {
-			return heartbeatutil.BuildHeartbeatProgressSnapshot(mgr, maxItems)
 		},
 	}))
 	cmd.AddCommand(newToolsCmd())

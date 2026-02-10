@@ -10,7 +10,6 @@ import (
 	"github.com/quailyquaily/mistermorph/guard"
 	"github.com/quailyquaily/mistermorph/internal/llmconfig"
 	"github.com/quailyquaily/mistermorph/llm"
-	"github.com/quailyquaily/mistermorph/memory"
 	"github.com/quailyquaily/mistermorph/tools"
 	"github.com/spf13/cobra"
 )
@@ -28,9 +27,8 @@ type Dependencies struct {
 	GuardFromViper                 func(logger *slog.Logger) *guard.Guard
 	PromptSpecForTelegram          func(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, task string, client llm.Client, model string, stickySkills []string) (agent.PromptSpec, []string, []string, error)
 	FormatFinalOutput              func(final *agent.Final) string
-	BuildHeartbeatTask             func(checklistPath string, memorySnapshot string) (string, bool, error)
+	BuildHeartbeatTask             func(checklistPath string) (string, bool, error)
 	BuildHeartbeatMeta             func(source string, interval time.Duration, checklistPath string, checklistEmpty bool, extra map[string]any) map[string]any
-	BuildHeartbeatProgressSnapshot func(mgr *memory.Manager, maxItems int) (string, error)
 }
 
 var deps Dependencies
@@ -136,11 +134,11 @@ func formatFinalOutput(final *agent.Final) string {
 	return deps.FormatFinalOutput(final)
 }
 
-func buildHeartbeatTask(checklistPath string, memorySnapshot string) (string, bool, error) {
+func buildHeartbeatTask(checklistPath string) (string, bool, error) {
 	if deps.BuildHeartbeatTask == nil {
 		return "", true, fmt.Errorf("BuildHeartbeatTask dependency missing")
 	}
-	return deps.BuildHeartbeatTask(checklistPath, memorySnapshot)
+	return deps.BuildHeartbeatTask(checklistPath)
 }
 
 func buildHeartbeatMeta(source string, interval time.Duration, checklistPath string, checklistEmpty bool, extra map[string]any) map[string]any {
@@ -151,11 +149,4 @@ func buildHeartbeatMeta(source string, interval time.Duration, checklistPath str
 		}
 	}
 	return deps.BuildHeartbeatMeta(source, interval, checklistPath, checklistEmpty, extra)
-}
-
-func buildHeartbeatProgressSnapshot(mgr *memory.Manager, maxItems int) (string, error) {
-	if deps.BuildHeartbeatProgressSnapshot == nil {
-		return "", nil
-	}
-	return deps.BuildHeartbeatProgressSnapshot(mgr, maxItems)
 }

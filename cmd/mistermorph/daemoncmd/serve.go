@@ -217,7 +217,6 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 			hbChecklist := statepaths.HeartbeatChecklistPath()
 			if hbEnabled && hbInterval > 0 {
 				go func() {
-					hbMaxItems := viper.GetInt("memory.injection.max_items")
 					ticker := time.NewTicker(hbInterval)
 					defer ticker.Stop()
 					for range ticker.C {
@@ -225,14 +224,7 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 							logger.Debug("heartbeat_skip", "reason", "already_running")
 							continue
 						}
-						hbSnapshot := ""
-						snap, err := heartbeatutil.BuildHeartbeatProgressSnapshot(nil, hbMaxItems)
-						if err != nil {
-							logger.Warn("heartbeat_memory_error", "error", err.Error())
-						} else {
-							hbSnapshot = snap
-						}
-						task, checklistEmpty, err := heartbeatutil.BuildHeartbeatTask(hbChecklist, hbSnapshot)
+						task, checklistEmpty, err := heartbeatutil.BuildHeartbeatTask(hbChecklist)
 						if err != nil {
 							alert, msg := hbState.EndFailure(err)
 							if alert {

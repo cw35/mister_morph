@@ -10,9 +10,6 @@ import (
 	"time"
 
 	"github.com/quailyquaily/mistermorph/agent"
-	"github.com/quailyquaily/mistermorph/internal/statepaths"
-	"github.com/quailyquaily/mistermorph/internal/todo"
-	"github.com/quailyquaily/mistermorph/memory"
 )
 
 const (
@@ -34,30 +31,21 @@ func FormatFinalOutput(final *agent.Final) string {
 	}
 }
 
-func BuildHeartbeatTask(checklistPath string, memorySnapshot string) (string, bool, error) {
+func BuildHeartbeatTask(checklistPath string) (string, bool, error) {
 	checklist, empty, err := readHeartbeatChecklist(checklistPath)
 	if err != nil {
 		return "", true, err
 	}
 
 	var b strings.Builder
-	b.WriteString("You are running a heartbeat checkpoint for the agent.\n")
-	b.WriteString("Review the provided checklist and context. Always respond with a short summary of what you checked/did.\n")
-	b.WriteString("If anything requires user attention or action, make that explicit in the summary.\n")
+	b.WriteString("You are running a regular checkpoint for yourself, just like a wake up from sleep.\n")
+	b.WriteString("Review the provided checklist and context. Always do not respond of what you checked/did.\n")
 	b.WriteString("Do NOT output placeholders like HEARTBEAT_OK.\n")
 	b.WriteString("Do NOT output mention it is a heartbeat.\n")
-	b.WriteString("If the checklist is missing or empty, review recent short-term memory (if enabled) and current context to find things to do before summarizing.\n")
-	b.WriteString("Prefer to resolve things yourself; avoid asking the user unless genuinely blocked.\n")
-	b.WriteString("If the progress snapshot shows pending TODO items, treat that as needing attention: pick ONE pending item and take the smallest next step now (tools optional, but use them if needed).\n")
-	b.WriteString("You MUST take at least one concrete action step before returning a final response when pending items exist. Do not only acknowledge pending items.\n")
+	b.WriteString("Try to resolve things yourself; avoid asking the user unless genuinely blocked.\n")
 	if !empty {
 		b.WriteString("\nChecklist:\n")
 		b.WriteString(checklist)
-		b.WriteString("\n")
-	}
-	if strings.TrimSpace(memorySnapshot) != "" {
-		b.WriteString("\nRecent memory progress:\n")
-		b.WriteString(strings.TrimSpace(memorySnapshot))
 		b.WriteString("\n")
 	}
 
@@ -98,39 +86,6 @@ func BuildHeartbeatMeta(source string, interval time.Duration, checklistPath str
 		"trigger":   "heartbeat",
 		"heartbeat": hb,
 	}
-}
-
-func BuildHeartbeatProgressSnapshot(mgr *memory.Manager, maxItems int) (string, error) {
-	_ = mgr
-	if maxItems <= 0 {
-		maxItems = 50
-	}
-
-	store := todo.NewStore(statepaths.TODOWIPPath(), statepaths.TODODONEPath())
-	list, err := store.List("wip")
-	if err != nil {
-		return "", err
-	}
-	if len(list.WIPItems) == 0 {
-		return "", nil
-	}
-	items := list.WIPItems
-	if len(items) > maxItems {
-		items = items[:maxItems]
-	}
-	lines := make([]string, 0, len(items)+1)
-	lines = append(lines, "[TODO:WIP:Progress]")
-	for _, item := range items {
-		createdAt := strings.TrimSpace(item.CreatedAt)
-		content := strings.TrimSpace(item.Content)
-		chatID := strings.TrimSpace(item.ChatID)
-		line := fmt.Sprintf("- [ ] CreatedAt: %s - %s", createdAt, content)
-		if chatID != "" {
-			line = fmt.Sprintf("- [ ] CreatedAt: %s - ChatID: %s - %s", createdAt, chatID, content)
-		}
-		lines = append(lines, line)
-	}
-	return strings.TrimSpace(strings.Join(lines, "\n")), nil
 }
 
 type State struct {

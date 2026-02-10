@@ -49,11 +49,7 @@ func New(deps Dependencies) *cobra.Command {
 			var runMeta map[string]any
 			if isHeartbeat {
 				hbChecklist := statepaths.HeartbeatChecklistPath()
-				hbSnapshot, err := heartbeatutil.BuildHeartbeatProgressSnapshot(nil, viper.GetInt("memory.injection.max_items"))
-				if err != nil {
-					return err
-				}
-				hbTask, checklistEmpty, err := heartbeatutil.BuildHeartbeatTask(hbChecklist, hbSnapshot)
+				hbTask, checklistEmpty, err := heartbeatutil.BuildHeartbeatTask(hbChecklist)
 				if err != nil {
 					return err
 				}
