@@ -38,9 +38,9 @@ func TestRoutingSenderSendTelegramViaBus(t *testing.T) {
 	sender := newRoutingSenderForBusTest(t, sendText, &mockDataPusher{})
 	contentType, payloadBase64 := testEnvelopePayload(t, "hello telegram")
 	accepted, deduped, err := sender.Send(ctx, contacts.Contact{
-		ContactID:     "tg:12345",
-		Kind:          contacts.KindHuman,
-		Channel:       contacts.ChannelTelegram,
+		ContactID:       "tg:12345",
+		Kind:            contacts.KindHuman,
+		Channel:         contacts.ChannelTelegram,
 		TGPrivateChatID: 12345,
 	}, contacts.ShareDecision{
 		ContactID:      "tg:12345",
@@ -65,6 +65,121 @@ func TestRoutingSenderSendTelegramViaBus(t *testing.T) {
 	}
 	if gotTarget != int64(12345) {
 		t.Fatalf("target mismatch: got %#v want %d", gotTarget, int64(12345))
+	}
+}
+
+func TestRoutingSenderSendTelegramViaBus_ChatIDHintMatchGroup(t *testing.T) {
+	ctx := context.Background()
+
+	var (
+		mu        sync.Mutex
+		gotTarget any
+	)
+	sendText := func(ctx context.Context, target any, text string) error {
+		mu.Lock()
+		defer mu.Unlock()
+		gotTarget = target
+		return nil
+	}
+
+	sender := newRoutingSenderForBusTest(t, sendText, &mockDataPusher{})
+	contentType, payloadBase64 := testEnvelopePayload(t, "hello telegram")
+	_, _, err := sender.Send(ctx, contacts.Contact{
+		ContactID:       "tg:@alice",
+		Kind:            contacts.KindHuman,
+		Channel:         contacts.ChannelTelegram,
+		TGPrivateChatID: 12345,
+		TGGroupChatIDs:  []int64{-1007788},
+	}, contacts.ShareDecision{
+		ContactID:      "tg:@alice",
+		ChatID:         "tg:-1007788",
+		ItemID:         "cand_hint_group",
+		ContentType:    contentType,
+		PayloadBase64:  payloadBase64,
+		IdempotencyKey: "manual:tg:hint-group",
+	})
+	if err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if gotTarget != int64(-1007788) {
+		t.Fatalf("target mismatch: got %#v want %d", gotTarget, int64(-1007788))
+	}
+}
+
+func TestRoutingSenderSendTelegramViaBus_ChatIDHintFallsBackToPrivate(t *testing.T) {
+	ctx := context.Background()
+
+	var (
+		mu        sync.Mutex
+		gotTarget any
+	)
+	sendText := func(ctx context.Context, target any, text string) error {
+		mu.Lock()
+		defer mu.Unlock()
+		gotTarget = target
+		return nil
+	}
+
+	sender := newRoutingSenderForBusTest(t, sendText, &mockDataPusher{})
+	contentType, payloadBase64 := testEnvelopePayload(t, "hello telegram")
+	_, _, err := sender.Send(ctx, contacts.Contact{
+		ContactID:       "tg:@alice",
+		Kind:            contacts.KindHuman,
+		Channel:         contacts.ChannelTelegram,
+		TGPrivateChatID: 12345,
+		TGGroupChatIDs:  []int64{-1007788},
+	}, contacts.ShareDecision{
+		ContactID:      "tg:@alice",
+		ChatID:         "tg:-1009999",
+		ItemID:         "cand_hint_private",
+		ContentType:    contentType,
+		PayloadBase64:  payloadBase64,
+		IdempotencyKey: "manual:tg:hint-private",
+	})
+	if err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if gotTarget != int64(12345) {
+		t.Fatalf("target mismatch: got %#v want %d", gotTarget, int64(12345))
+	}
+}
+
+func TestRoutingSenderSendTelegramViaBus_ChatIDHintNoPrivateFallback(t *testing.T) {
+	ctx := context.Background()
+
+	calls := 0
+	sendText := func(ctx context.Context, target any, text string) error {
+		calls++
+		return nil
+	}
+
+	sender := newRoutingSenderForBusTest(t, sendText, &mockDataPusher{})
+	contentType, payloadBase64 := testEnvelopePayload(t, "hello telegram")
+	_, _, err := sender.Send(ctx, contacts.Contact{
+		ContactID:      "tg:@alice",
+		Kind:           contacts.KindHuman,
+		Channel:        contacts.ChannelTelegram,
+		TGGroupChatIDs: []int64{-1007788},
+	}, contacts.ShareDecision{
+		ContactID:      "tg:@alice",
+		ChatID:         "tg:-1009999",
+		ItemID:         "cand_hint_error",
+		ContentType:    contentType,
+		PayloadBase64:  payloadBase64,
+		IdempotencyKey: "manual:tg:hint-error",
+	})
+	if err == nil {
+		t.Fatalf("Send() expected error when chat_id hint misses and no private fallback")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "no tg_private_chat_id fallback") {
+		t.Fatalf("Send() error mismatch: got %q", err.Error())
+	}
+	if calls != 0 {
+		t.Fatalf("send calls mismatch: got %d want 0", calls)
 	}
 }
 
@@ -128,9 +243,9 @@ func TestRoutingSenderSendFailsWithoutIdempotencyKey(t *testing.T) {
 	}, &mockDataPusher{})
 	contentType, payloadBase64 := testEnvelopePayload(t, "hello")
 	_, _, err := sender.Send(ctx, contacts.Contact{
-		ContactID:     "tg:12345",
-		Kind:          contacts.KindHuman,
-		Channel:       contacts.ChannelTelegram,
+		ContactID:       "tg:12345",
+		Kind:            contacts.KindHuman,
+		Channel:         contacts.ChannelTelegram,
 		TGPrivateChatID: 12345,
 	}, contacts.ShareDecision{
 		ContactID:     "tg:12345",

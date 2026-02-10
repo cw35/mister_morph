@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -18,6 +19,10 @@ var (
 )
 
 func (s *Store) Add(ctx context.Context, raw string) (UpdateResult, error) {
+	return s.AddWithChatID(ctx, raw, "")
+}
+
+func (s *Store) AddWithChatID(ctx context.Context, raw string, chatID string) (UpdateResult, error) {
 	wip, done, err := s.readFiles()
 	if err != nil {
 		return UpdateResult{}, err
@@ -26,6 +31,9 @@ func (s *Store) Add(ctx context.Context, raw string) (UpdateResult, error) {
 	entry, err := ParseEntryFromInput(raw, now)
 	if err != nil {
 		return UpdateResult{}, err
+	}
+	if parsedChatID := normalizeEntryChatID(chatID); parsedChatID != "" {
+		entry.ChatID = parsedChatID
 	}
 	if err := validateWIPEntry(entry); err != nil {
 		return UpdateResult{}, err
@@ -53,6 +61,10 @@ func (s *Store) Add(ctx context.Context, raw string) (UpdateResult, error) {
 		},
 		Entry: &entry,
 	}, nil
+}
+
+func (s *Store) AddWithChannel(ctx context.Context, raw string, channel string) (UpdateResult, error) {
+	return s.AddWithChatID(ctx, raw, channel)
 }
 
 func (s *Store) Complete(ctx context.Context, raw string) (UpdateResult, error) {
@@ -87,6 +99,7 @@ func (s *Store) Complete(ctx context.Context, raw string) (UpdateResult, error) 
 		Done:      true,
 		CreatedAt: target.CreatedAt,
 		DoneAt:    s.nowUTC().Format(TimestampLayout),
+		ChatID:    normalizeEntryChatID(target.ChatID),
 		Content:   strings.TrimSpace(target.Content),
 	}
 	done.Entries = append([]Entry{doneEntry}, done.Entries...)
@@ -231,6 +244,9 @@ func validateWIPEntry(item Entry) error {
 	if !validTimestamp(item.CreatedAt) {
 		return fmt.Errorf("invalid CreatedAt: %s", strings.TrimSpace(item.CreatedAt))
 	}
+	if err := validateEntryChatID(item.ChatID); err != nil {
+		return err
+	}
 	if err := validateEntryReferences(item.Content); err != nil {
 		return err
 	}
@@ -255,4 +271,47 @@ func isValidReferenceID(ref string) bool {
 		return true
 	}
 	return false
+}
+
+func normalizeEntryChatID(raw string) string {
+	return strings.ToLower(strings.TrimSpace(raw))
+}
+
+func validateEntryChatID(raw string) error {
+	chatID := normalizeEntryChatID(raw)
+	if chatID == "" {
+		return nil
+	}
+	if !isValidTODOChatID(chatID) {
+		return fmt.Errorf("invalid chat_id: %s", strings.TrimSpace(raw))
+	}
+	return nil
+}
+
+func isValidTODOChatID(chatID string) bool {
+	chatID = normalizeEntryChatID(chatID)
+	if !refIDPatternA.MatchString(chatID) {
+		return false
+	}
+	idText := strings.TrimSpace(strings.TrimPrefix(chatID, "tg:"))
+	id, err := strconv.ParseInt(idText, 10, 64)
+	if err != nil {
+		return false
+	}
+	return id != 0
+}
+
+// normalizeEntryChannel is kept for backward compatibility in older call sites.
+func normalizeEntryChannel(raw string) string {
+	return normalizeEntryChatID(raw)
+}
+
+// validateEntryChannel is kept for backward compatibility in older call sites.
+func validateEntryChannel(raw string) error {
+	return validateEntryChatID(raw)
+}
+
+// isValidTODOChannel is kept for backward compatibility in older call sites.
+func isValidTODOChannel(channel string) bool {
+	return isValidTODOChatID(channel)
 }

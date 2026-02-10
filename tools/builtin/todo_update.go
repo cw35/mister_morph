@@ -95,6 +95,10 @@ func (t *TodoUpdateTool) ParameterSchema() string {
 					"type": "string",
 				},
 			},
+			"chat_id": map[string]any{
+				"type":        "string",
+				"description": "Optional task context Telegram chat id (for example tg:-1001234567890).",
+			},
 		},
 		"required": []string{"action", "content"},
 	}
@@ -140,12 +144,17 @@ func (t *TodoUpdateTool) Execute(ctx context.Context, params map[string]any) (st
 	)
 	switch action {
 	case "add":
+		chatID, chatIDErr := parseTodoUpdateChatID(params)
+		if chatIDErr != nil {
+			return "", chatIDErr
+		}
 		people, peopleErr := parseTodoUpdatePeople(params)
 		if peopleErr != nil {
 			return "", peopleErr
 		}
 		slog.Default().Debug("todo_update_add_start",
 			"content_len", len(content),
+			"chat_id", chatID,
 			"people_count", len(people),
 			"context_channel", t.AddContext.Channel,
 			"context_chat_type", t.AddContext.ChatType,
@@ -218,7 +227,7 @@ func (t *TodoUpdateTool) Execute(ctx context.Context, params map[string]any) (st
 				}
 			}
 		}
-		result, err = store.Add(ctx, rewritten)
+		result, err = store.AddWithChatID(ctx, rewritten, chatID)
 		if err == nil && len(warnings) > 0 {
 			result.Warnings = append(result.Warnings, warnings...)
 		}
@@ -276,6 +285,25 @@ func parseTodoUpdatePeople(params map[string]any) ([]string, error) {
 	default:
 		return nil, fmt.Errorf("people must be an array of strings")
 	}
+}
+
+func parseTodoUpdateChatID(params map[string]any) (string, error) {
+	if raw, exists := params["chat_id"]; exists && raw != nil {
+		value, ok := raw.(string)
+		if !ok {
+			return "", fmt.Errorf("chat_id must be a string")
+		}
+		return strings.TrimSpace(value), nil
+	}
+	// Backward compatibility for older callers.
+	if raw, exists := params["channel"]; exists && raw != nil {
+		value, ok := raw.(string)
+		if !ok {
+			return "", fmt.Errorf("channel must be a string")
+		}
+		return strings.TrimSpace(value), nil
+	}
+	return "", nil
 }
 
 func appendIfMissingWarning(warnings []string, v string) []string {

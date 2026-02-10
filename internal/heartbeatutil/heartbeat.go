@@ -121,7 +121,13 @@ func BuildHeartbeatProgressSnapshot(mgr *memory.Manager, maxItems int) (string, 
 	lines := make([]string, 0, len(items)+1)
 	lines = append(lines, "[TODO:WIP:Progress]")
 	for _, item := range items {
-		line := fmt.Sprintf("- [ ] CreatedAt: %s - %s", strings.TrimSpace(item.CreatedAt), strings.TrimSpace(item.Content))
+		createdAt := strings.TrimSpace(item.CreatedAt)
+		content := strings.TrimSpace(item.Content)
+		chatID := strings.TrimSpace(item.ChatID)
+		line := fmt.Sprintf("- [ ] CreatedAt: %s - %s", createdAt, content)
+		if chatID != "" {
+			line = fmt.Sprintf("- [ ] CreatedAt: %s - ChatID: %s - %s", createdAt, chatID, content)
+		}
 		lines = append(lines, line)
 	}
 	return strings.TrimSpace(strings.Join(lines, "\n")), nil

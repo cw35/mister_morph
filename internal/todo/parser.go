@@ -136,9 +136,15 @@ func ParseEntryFromInput(raw string, now string) (Entry, error) {
 	if raw == "" {
 		return Entry{}, fmt.Errorf("content is required")
 	}
+	chatID := ""
+	if parsedChatID, parsedContent, ok := splitChatIDPrefix(raw); ok {
+		chatID = parsedChatID
+		raw = parsedContent
+	}
 	return Entry{
 		Done:      false,
 		CreatedAt: strings.TrimSpace(now),
+		ChatID:    chatID,
 		Content:   raw,
 	}, nil
 }
@@ -218,9 +224,15 @@ func parseWIPEntryLine(line string) (Entry, bool) {
 	if !validTimestamp(createdAt) || content == "" {
 		return Entry{}, false
 	}
+	chatID := ""
+	if parsedChatID, parsedContent, ok := splitChatIDPrefix(content); ok {
+		chatID = parsedChatID
+		content = parsedContent
+	}
 	return Entry{
 		Done:      false,
 		CreatedAt: createdAt,
+		ChatID:    chatID,
 		Content:   content,
 	}, true
 }
@@ -245,10 +257,16 @@ func parseDONEEntryLine(line string) (Entry, bool) {
 	if !validTimestamp(createdAt) || !validTimestamp(doneAt) || content == "" {
 		return Entry{}, false
 	}
+	chatID := ""
+	if parsedChatID, parsedContent, ok := splitChatIDPrefix(content); ok {
+		chatID = parsedChatID
+		content = parsedContent
+	}
 	return Entry{
 		Done:      true,
 		CreatedAt: createdAt,
 		DoneAt:    doneAt,
+		ChatID:    chatID,
 		Content:   content,
 	}, true
 }
@@ -258,6 +276,10 @@ func renderWIPEntryLine(item Entry) string {
 	createdAt := strings.TrimSpace(item.CreatedAt)
 	if content == "" || !validTimestamp(createdAt) {
 		return ""
+	}
+	chatID := normalizeEntryChatID(item.ChatID)
+	if chatID != "" {
+		return "- [ ] CreatedAt: " + createdAt + " - ChatID: " + chatID + " - " + content
 	}
 	return "- [ ] CreatedAt: " + createdAt + " - " + content
 }
@@ -269,5 +291,40 @@ func renderDONEEntryLine(item Entry) string {
 	if content == "" || !validTimestamp(createdAt) || !validTimestamp(doneAt) {
 		return ""
 	}
+	chatID := normalizeEntryChatID(item.ChatID)
+	if chatID != "" {
+		return "- [x] CreatedAt: " + createdAt + ", DoneAt: " + doneAt + " - ChatID: " + chatID + " - " + content
+	}
 	return "- [x] CreatedAt: " + createdAt + ", DoneAt: " + doneAt + " - " + content
+}
+
+func splitChatIDPrefix(content string) (string, string, bool) {
+	content = strings.TrimSpace(content)
+	lower := strings.ToLower(content)
+	prefix := ""
+	switch {
+	case strings.HasPrefix(lower, "chatid:"):
+		prefix = "chatid:"
+	case strings.HasPrefix(lower, "channel:"):
+		// Keep backward compatibility with older TODO files.
+		prefix = "channel:"
+	default:
+		return "", content, false
+	}
+	rest := strings.TrimSpace(content[len(prefix):])
+	parts := strings.SplitN(rest, " - ", 2)
+	if len(parts) != 2 {
+		return "", content, false
+	}
+	chatID := normalizeEntryChatID(parts[0])
+	body := strings.TrimSpace(parts[1])
+	if body == "" || !isValidTODOChatID(chatID) {
+		return "", content, false
+	}
+	return chatID, body, true
+}
+
+// splitChannelPrefix is kept for backward compatibility in older call sites.
+func splitChannelPrefix(content string) (string, string, bool) {
+	return splitChatIDPrefix(content)
 }

@@ -197,7 +197,7 @@ func (s *RoutingSender) Send(ctx context.Context, contact contacts.Contact, deci
 	if ctx == nil {
 		return false, false, fmt.Errorf("context is required")
 	}
-	target, resolvedChatType, telegramErr := ResolveTelegramTarget(contact)
+	target, resolvedChatType, telegramErr := ResolveTelegramTargetWithChatID(contact, decision.ChatID)
 	if telegramErr == nil && target != nil {
 		if !s.allowHumanSend {
 			return false, false, fmt.Errorf("human proactive send is disabled by config")
@@ -595,6 +595,54 @@ func ResolveTelegramTarget(contact contacts.Contact) (any, string, error) {
 		return chatID, chatTypeFromChatID(chatID), nil
 	}
 	return nil, "", fmt.Errorf("telegram target not found in tg_private_chat_id/tg_group_chat_ids/contact_id")
+}
+
+func ResolveTelegramTargetWithChatID(contact contacts.Contact, chatIDHint string) (any, string, error) {
+	hintID, hasHint, err := parseTelegramChatIDHint(chatIDHint)
+	if err != nil {
+		return nil, "", err
+	}
+	if !hasHint {
+		return ResolveTelegramTarget(contact)
+	}
+	if chatID, chatType, ok := contactTelegramChatMatch(contact, hintID); ok {
+		return chatID, chatType, nil
+	}
+	if contact.TGPrivateChatID != 0 {
+		return contact.TGPrivateChatID, "private", nil
+	}
+	return nil, "", fmt.Errorf("telegram chat_id %d not found in tg_private_chat_id/tg_group_chat_ids and no tg_private_chat_id fallback", hintID)
+}
+
+func parseTelegramChatIDHint(raw string) (int64, bool, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return 0, false, nil
+	}
+	lower := strings.ToLower(value)
+	if strings.HasPrefix(lower, "tg:") {
+		value = strings.TrimSpace(value[len("tg:"):])
+	}
+	chatID, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || chatID == 0 {
+		return 0, false, fmt.Errorf("invalid chat_id: %s", strings.TrimSpace(raw))
+	}
+	return chatID, true, nil
+}
+
+func contactTelegramChatMatch(contact contacts.Contact, chatID int64) (int64, string, bool) {
+	if chatID == 0 {
+		return 0, "", false
+	}
+	if contact.TGPrivateChatID == chatID {
+		return chatID, "private", true
+	}
+	for _, groupID := range contact.TGGroupChatIDs {
+		if groupID == chatID {
+			return chatID, chatTypeFromChatID(chatID), true
+		}
+	}
+	return 0, "", false
 }
 
 func IsPublicTelegramTarget(target any, resolvedChatType string) bool {

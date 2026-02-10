@@ -17,6 +17,7 @@ type Entry struct {
 	Done      bool   `json:"done"`
 	CreatedAt string `json:"created_at"`
 	DoneAt    string `json:"done_at,omitempty"`
+	ChatID    string `json:"chat_id,omitempty"`
 	Content   string `json:"content"`
 }
 

@@ -10,9 +10,9 @@ import (
 
 func TestResolveTelegramTargetPrefersPrivate(t *testing.T) {
 	contact := contacts.Contact{
-		ContactID:     "tg:1001",
-		Kind:          contacts.KindHuman,
-		Channel:       contacts.ChannelTelegram,
+		ContactID:       "tg:1001",
+		Kind:            contacts.KindHuman,
+		Channel:         contacts.ChannelTelegram,
 		TGPrivateChatID: 1001,
 		TGGroupChatIDs:  []int64{-1002233},
 	}
@@ -31,9 +31,9 @@ func TestResolveTelegramTargetPrefersPrivate(t *testing.T) {
 
 func TestResolveTelegramTargetFallsBackToGroup(t *testing.T) {
 	contact := contacts.Contact{
-		ContactID:     "tg:1001",
-		Kind:          contacts.KindHuman,
-		Channel:       contacts.ChannelTelegram,
+		ContactID:       "tg:1001",
+		Kind:            contacts.KindHuman,
+		Channel:         contacts.ChannelTelegram,
 		TGPrivateChatID: 0,
 		TGGroupChatIDs:  []int64{-1008899},
 	}
@@ -52,9 +52,9 @@ func TestResolveTelegramTargetFallsBackToGroup(t *testing.T) {
 
 func TestResolveTelegramTargetFallsBackToPrivate(t *testing.T) {
 	contact := contacts.Contact{
-		ContactID:     "tg:1001",
-		Kind:          contacts.KindHuman,
-		Channel:       contacts.ChannelTelegram,
+		ContactID:       "tg:1001",
+		Kind:            contacts.KindHuman,
+		Channel:         contacts.ChannelTelegram,
 		TGPrivateChatID: 1001,
 		TGGroupChatIDs:  []int64{-100111},
 	}
@@ -68,6 +68,70 @@ func TestResolveTelegramTargetFallsBackToPrivate(t *testing.T) {
 	}
 	if chatType != "private" {
 		t.Fatalf("chat type mismatch: got %q want %q", chatType, "private")
+	}
+}
+
+func TestResolveTelegramTargetWithChatIDMatchGroup(t *testing.T) {
+	contact := contacts.Contact{
+		ContactID:       "tg:@alice",
+		Kind:            contacts.KindHuman,
+		Channel:         contacts.ChannelTelegram,
+		TGPrivateChatID: 1001,
+		TGGroupChatIDs:  []int64{-100111},
+	}
+	target, chatType, err := contactsruntime.ResolveTelegramTargetWithChatID(contact, "tg:-100111")
+	if err != nil {
+		t.Fatalf("ResolveTelegramTargetWithChatID() error = %v", err)
+	}
+	got, ok := target.(int64)
+	if !ok || got != -100111 {
+		t.Fatalf("target mismatch: got=%T %v", target, target)
+	}
+	if chatType != "supergroup" {
+		t.Fatalf("chat type mismatch: got %q want %q", chatType, "supergroup")
+	}
+}
+
+func TestResolveTelegramTargetWithChatIDFallsBackToPrivate(t *testing.T) {
+	contact := contacts.Contact{
+		ContactID:       "tg:@alice",
+		Kind:            contacts.KindHuman,
+		Channel:         contacts.ChannelTelegram,
+		TGPrivateChatID: 1001,
+		TGGroupChatIDs:  []int64{-100111},
+	}
+	target, chatType, err := contactsruntime.ResolveTelegramTargetWithChatID(contact, "tg:-100222")
+	if err != nil {
+		t.Fatalf("ResolveTelegramTargetWithChatID() error = %v", err)
+	}
+	got, ok := target.(int64)
+	if !ok || got != 1001 {
+		t.Fatalf("target mismatch: got=%T %v", target, target)
+	}
+	if chatType != "private" {
+		t.Fatalf("chat type mismatch: got %q want %q", chatType, "private")
+	}
+}
+
+func TestResolveTelegramTargetWithChatIDNoPrivateFallback(t *testing.T) {
+	contact := contacts.Contact{
+		ContactID:      "tg:@alice",
+		Kind:           contacts.KindHuman,
+		Channel:        contacts.ChannelTelegram,
+		TGGroupChatIDs: []int64{-100111},
+	}
+	target, chatType, err := contactsruntime.ResolveTelegramTargetWithChatID(contact, "tg:-100222")
+	if err == nil {
+		t.Fatalf("ResolveTelegramTargetWithChatID() expected error when no private fallback")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "no tg_private_chat_id fallback") {
+		t.Fatalf("ResolveTelegramTargetWithChatID() error mismatch: got %q", err.Error())
+	}
+	if target != nil {
+		t.Fatalf("target mismatch: got=%T %v want nil", target, target)
+	}
+	if chatType != "" {
+		t.Fatalf("chatType mismatch: got %q want empty", chatType)
 	}
 }
 

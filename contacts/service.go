@@ -331,6 +331,12 @@ func telegramUsernameOfContact(contact Contact) string {
 }
 
 func resolveDecisionChannel(contact Contact, decision ShareDecision) (string, error) {
+	if strings.TrimSpace(decision.ChatID) != "" {
+		if _, err := parseTelegramChatIDHint(decision.ChatID); err != nil {
+			return "", err
+		}
+		return ChannelTelegram, nil
+	}
 	if hasTelegramTarget(contact) {
 		return ChannelTelegram, nil
 	}
@@ -443,6 +449,22 @@ func hasTelegramTarget(contact Contact) bool {
 		return err == nil
 	}
 	return false
+}
+
+func parseTelegramChatIDHint(raw string) (int64, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return 0, fmt.Errorf("chat_id is required")
+	}
+	lower := strings.ToLower(value)
+	if strings.HasPrefix(lower, "tg:") {
+		value = strings.TrimSpace(value[len("tg:"):])
+	}
+	chatID, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || chatID == 0 {
+		return 0, fmt.Errorf("invalid chat_id: %s", strings.TrimSpace(raw))
+	}
+	return chatID, nil
 }
 
 func deriveContactID(contact Contact) string {

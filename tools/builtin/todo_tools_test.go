@@ -93,6 +93,85 @@ func TestTodoUpdateTool(t *testing.T) {
 	}
 }
 
+func TestTodoUpdateToolAddWithChatIDParam(t *testing.T) {
+	root := t.TempDir()
+	wip := filepath.Join(root, "TODO.WIP.md")
+	done := filepath.Join(root, "TODO.DONE.md")
+	contactsDir := filepath.Join(root, "contacts")
+	seedTodoContacts(t, contactsDir)
+
+	client := &stubTodoToolLLMClient{
+		replies: []string{
+			`{"status":"ok","rewritten_content":"提醒 John (tg:1001) 提交评估报告"}`,
+		},
+	}
+	update := NewTodoUpdateToolWithLLM(true, wip, done, contactsDir, client, "gpt-5.2")
+	out, err := update.Execute(context.Background(), map[string]any{
+		"action":  "add",
+		"content": "提醒 John 提交评估报告",
+		"people":  []any{"John"},
+		"chat_id": "tg:-1001981343441",
+	})
+	if err != nil {
+		t.Fatalf("todo_update add error = %v", err)
+	}
+	var parsed struct {
+		OK    bool `json:"ok"`
+		Entry struct {
+			ChatID  string `json:"chat_id"`
+			Content string `json:"content"`
+		} `json:"entry"`
+	}
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("todo_update add json parse error = %v", err)
+	}
+	if !parsed.OK {
+		t.Fatalf("expected ok=true, got %s", out)
+	}
+	if parsed.Entry.ChatID != "tg:-1001981343441" {
+		t.Fatalf("entry chat_id mismatch: got %q want %q", parsed.Entry.ChatID, "tg:-1001981343441")
+	}
+
+	store := todo.NewStore(wip, done)
+	listOut, err := store.List("wip")
+	if err != nil {
+		t.Fatalf("store list error = %v", err)
+	}
+	if len(listOut.WIPItems) != 1 {
+		t.Fatalf("expected one WIP item, got %d", len(listOut.WIPItems))
+	}
+	if listOut.WIPItems[0].ChatID != "tg:-1001981343441" {
+		t.Fatalf("persisted chat_id mismatch: got %q want %q", listOut.WIPItems[0].ChatID, "tg:-1001981343441")
+	}
+}
+
+func TestTodoUpdateToolAddRejectsInvalidChatID(t *testing.T) {
+	root := t.TempDir()
+	wip := filepath.Join(root, "TODO.WIP.md")
+	done := filepath.Join(root, "TODO.DONE.md")
+	contactsDir := filepath.Join(root, "contacts")
+	seedTodoContacts(t, contactsDir)
+
+	client := &stubTodoToolLLMClient{
+		replies: []string{
+			`{"status":"ok","rewritten_content":"提醒 John (tg:1001) 提交评估报告"}`,
+		},
+	}
+	update := NewTodoUpdateToolWithLLM(true, wip, done, contactsDir, client, "gpt-5.2")
+	_, err := update.Execute(context.Background(), map[string]any{
+		"action":  "add",
+		"content": "提醒 John 提交评估报告",
+		"people":  []any{"John"},
+		"chat_id": "tg:@john",
+	})
+	if err == nil {
+		t.Fatalf("todo_update add expected invalid chat_id error")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "invalid chat_id") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestTodoUpdateRequiresLLMBinding(t *testing.T) {
 	root := t.TempDir()
 	update := NewTodoUpdateTool(true, filepath.Join(root, "TODO.WIP.md"), filepath.Join(root, "TODO.DONE.md"), filepath.Join(root, "contacts"))
@@ -341,7 +420,7 @@ func seedTodoContacts(t *testing.T, contactsDir string) {
 		ContactNickname: "John",
 		Kind:            contacts.KindHuman,
 		Channel:         contacts.ChannelTelegram,
-		TGPrivateChatID:   1001,
+		TGPrivateChatID: 1001,
 	}, now)
 	if err != nil {
 		t.Fatalf("seed john contact error = %v", err)

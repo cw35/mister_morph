@@ -32,8 +32,8 @@ type Contact struct {
 	Channel           string     `json:"channel"`
 	ContactNickname   string     `json:"nickname,omitempty"`
 	TGUsername        string     `json:"tg_username,omitempty"`
-	TGPrivateChatID     int64      `json:"tg_private_chat_id,omitempty"`
-	TGGroupChatIDs      []int64    `json:"tg_group_chat_ids,omitempty"`
+	TGPrivateChatID   int64      `json:"tg_private_chat_id,omitempty"`
+	TGGroupChatIDs    []int64    `json:"tg_group_chat_ids,omitempty"`
 	MAEPNodeID        string     `json:"maep_node_id,omitempty"`
 	MAEPDialAddress   string     `json:"maep_dial_address,omitempty"`
 	PersonaBrief      string     `json:"persona_brief,omitempty"`
@@ -44,6 +44,7 @@ type Contact struct {
 
 type ShareDecision struct {
 	ContactID      string `json:"contact_id"`
+	ChatID         string `json:"chat_id,omitempty"`
 	PeerID         string `json:"peer_id,omitempty"`
 	ItemID         string `json:"item_id"`
 	ContentType    string `json:"content_type"`

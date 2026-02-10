@@ -51,6 +51,10 @@ func (t *ContactsSendTool) ParameterSchema() string {
 				"type":        "string",
 				"description": "Target contact_id.",
 			},
+			"chat_id": map[string]any{
+				"type":        "string",
+				"description": "Optional chat hint (for example tg:-1001234567890).",
+			},
 			"content_type": map[string]any{
 				"type":        "string",
 				"description": "Payload type (default application/json). Must be application/json envelope.",
@@ -91,6 +95,10 @@ func (t *ContactsSendTool) Execute(ctx context.Context, params map[string]any) (
 	if contactID == "" {
 		return "", fmt.Errorf("missing required param: contact_id")
 	}
+	chatID, err := parseContactsSendChatID(params)
+	if err != nil {
+		return "", err
+	}
 
 	contentType, payload, err := resolveSendPayload(params, time.Now().UTC())
 	if err != nil {
@@ -111,6 +119,7 @@ func (t *ContactsSendTool) Execute(ctx context.Context, params map[string]any) (
 
 	decision := contacts.ShareDecision{
 		ContactID:     contactID,
+		ChatID:        chatID,
 		ContentType:   contentType,
 		PayloadBase64: payload,
 	}
@@ -131,6 +140,18 @@ func (t *ContactsSendTool) Execute(ctx context.Context, params map[string]any) (
 		"outcome": outcome,
 	}, "", "  ")
 	return string(out), nil
+}
+
+func parseContactsSendChatID(params map[string]any) (string, error) {
+	raw, exists := params["chat_id"]
+	if !exists || raw == nil {
+		return "", nil
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return "", fmt.Errorf("chat_id must be a string")
+	}
+	return strings.TrimSpace(value), nil
 }
 
 func resolveSendPayload(params map[string]any, now time.Time) (string, string, error) {

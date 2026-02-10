@@ -135,6 +135,7 @@
 | `action` | `string` | 是 | 无 | `add` 或 `complete`。 |
 | `content` | `string` | 是 | 无 | `add` 时为条目文本；`complete` 时为匹配查询。 |
 | `people` | `array<string>` | 否（`add` 时必填） | 无 | 提及人物列表（通常包含说话者、被称呼者、以及其他提及对象）。 |
+| `chat_id` | `string` | 否 | 空 | 任务上下文聊天 ID（例如 `tg:-1001234567890`）。写入 WIP 条目的 `ChatID:` 元字段。 |
 
 返回：
 
@@ -151,6 +152,7 @@
 - 受 `tools.todo.enabled` 开关控制。
 - 依赖 LLM 客户端与模型；未绑定会报错。
 - `add` 采用“参数抽取 + LLM 插入”流程：工具参数直接提供 `people`，然后由 LLM 结合 `content`、原始用户输入与运行时上下文插入 `名称 (ref_id)`。
+- `chat_id` 当前仅接受 `tg:<chat-id>`（正负 int64，且不能为 0）。
 - `add` 仅接受可引用 ID：`tg:<int64>`、`tg:@<username>`、`maep:<peer_id>`、`slack:<channel_id>`、`discord:<channel_id>`。
 - `add` 中的引用 ID 必须存在于联系人快照的 `reachable_ids`。
 - 若 `add` 中部分人物无法映射可引用 ID，工具不会中断，而是回退为“原样写入 content”，并在 `warnings` 中附加 `reference_unresolved_write_raw`。
@@ -193,6 +195,7 @@
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |---|---|---|---|---|
 | `contact_id` | `string` | 是 | 无 | 目标联系人 ID。 |
+| `chat_id` | `string` | 否 | 空 | 可选 Telegram chat 提示（例如 `tg:-1001234567890`）。 |
 | `content_type` | `string` | 否 | `application/json` | 负载类型，必须是 envelope JSON 类型。 |
 | `message_text` | `string` | 条件必填 | 无 | 文本内容；工具会自动封装为 envelope。 |
 | `message_base64` | `string` | 条件必填 | 无 | base64url 编码的 envelope JSON。 |
@@ -202,6 +205,10 @@
 约束：
 
 - `contacts_send` 的发送 topic 固定为 `chat.message`（调用方不再传 `topic`）。
+- 若传入 `chat_id`：
+  - 仅当该值命中联系人的 `tg_private_chat_id` 或 `tg_group_chat_ids` 时使用该目标发送；
+  - 否则回退到该联系人的 `tg_private_chat_id`；
+  - 若仍不可用，则返回错误。
 - `message_text` 与 `message_base64` 至少提供一个。
 - `content_type` 默认 `application/json`，且必须是 `application/json`（可带参数，如 `application/json; charset=utf-8`）。
 - 若提供 `message_base64`，其解码结果必须是 envelope JSON，并包含 `message_id` / `text` / `sent_at(RFC3339)` / `session_id(UUIDv7)`。
