@@ -62,8 +62,8 @@ func TestUpdateLongTermWritesTaskProgressFrontmatter(t *testing.T) {
 		return time.Date(2026, 2, 11, 9, 30, 0, 0, time.UTC)
 	}
 	updated, err := mgr.UpdateLongTerm("tg:@alice", PromoteDraft{
-		GoalsProjects: []KVItem{
-			{Title: "Project Alpha", Value: "Launch the new product line by Q3 2026."},
+		GoalsProjects: []string{
+			"Project Alpha: Launch the new product line by Q3 2026.",
 		},
 	})
 	if err != nil {
