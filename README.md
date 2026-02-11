@@ -34,9 +34,8 @@ What makes this project worth looking at:
 Option A: download a prebuilt binary from GitHub Releases (recommended for production use):
 
 ```bash
-curl -fsSL -o /tmp/install-mistermorph.sh \
-  https://raw.githubusercontent.com/quailyquaily/mistermorph/main/scripts/install-release.sh
-bash /tmp/install-mistermorph.sh v0.1.0
+curl -fsSL -o /tmp/install-mistermorph.sh https://raw.githubusercontent.com/quailyquaily/mistermorph/refs/heads/master/scripts/install-release.sh
+sudo bash /tmp/install-mistermorph.sh
 ```
 
 The installer supports:
