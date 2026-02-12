@@ -309,7 +309,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
   - Renderer: `cmd/mistermorph/telegramcmd/addressing_prompts.go`
 - Purpose: decide whether a message is actually addressed to the bot
 - Primary input: bot username, aliases, incoming message text
-- Output: `telegramAddressingLLMDecision{addressed, confidence, task_text, reason}`
+- Output: `telegramAddressingLLMDecision{addressed, confidence, impulse, reason}`
 - JSON required: **Yes** (`ForceJSON=true`)
 
 ### 18) Telegram reaction-category classifier

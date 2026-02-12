@@ -3,8 +3,13 @@ package telegramcmd
 import (
 	_ "embed"
 	"encoding/json"
+	"io"
+	"log/slog"
+	"strings"
 	"text/template"
 
+	"github.com/quailyquaily/mistermorph/agent"
+	"github.com/quailyquaily/mistermorph/internal/promptprofile"
 	"github.com/quailyquaily/mistermorph/internal/prompttmpl"
 )
 
@@ -27,6 +32,15 @@ var addressingPromptTemplateFuncs = template.FuncMap{
 var telegramAddressingSystemPromptTemplate = prompttmpl.MustParse("telegram_addressing_system", telegramAddressingSystemPromptTemplateSource, nil)
 var telegramAddressingUserPromptTemplate = prompttmpl.MustParse("telegram_addressing_user", telegramAddressingUserPromptTemplateSource, addressingPromptTemplateFuncs)
 
+const (
+	addressingPromptDefaultNote     = "No reliable heuristic pre-classification; decide directly from the message and persona."
+	addressingPromptPersonaFallback = "You are MisterMorph, a general-purpose AI agent that can use tools to complete tasks."
+)
+
+type telegramAddressingSystemPromptData struct {
+	PersonaIdentity string
+}
+
 type telegramAddressingUserPromptData struct {
 	BotUsername string
 	Aliases     []string
@@ -34,8 +48,20 @@ type telegramAddressingUserPromptData struct {
 	Note        string
 }
 
-func renderTelegramAddressingPrompts(botUser string, aliases []string, text string) (string, string, error) {
-	systemPrompt, err := prompttmpl.Render(telegramAddressingSystemPromptTemplate, struct{}{})
+func renderTelegramAddressingPrompts(botUser string, aliases []string, text string, note string) (string, string, error) {
+	note = strings.TrimSpace(note)
+	if note == "" {
+		note = addressingPromptDefaultNote
+	}
+
+	personaIdentity := loadAddressingPersonaIdentity()
+	if personaIdentity == "" {
+		personaIdentity = addressingPromptPersonaFallback
+	}
+
+	systemPrompt, err := prompttmpl.Render(telegramAddressingSystemPromptTemplate, telegramAddressingSystemPromptData{
+		PersonaIdentity: personaIdentity,
+	})
 	if err != nil {
 		return "", "", err
 	}
@@ -43,10 +69,22 @@ func renderTelegramAddressingPrompts(botUser string, aliases []string, text stri
 		BotUsername: botUser,
 		Aliases:     aliases,
 		Message:     text,
-		Note:        "An alias keyword was detected somewhere in the message, but a simple heuristic was not confident.",
+		Note:        note,
 	})
 	if err != nil {
 		return "", "", err
 	}
 	return systemPrompt, userPrompt, nil
+}
+
+var silentPromptProfileLogger = slog.New(slog.NewTextHandler(io.Discard, nil))
+
+func loadAddressingPersonaIdentity() string {
+	spec := agent.PromptSpec{}
+	promptprofile.ApplyPersonaIdentity(&spec, silentPromptProfileLogger)
+	persona := strings.TrimSpace(spec.Identity)
+	if persona == "" {
+		return ""
+	}
+	return persona
 }

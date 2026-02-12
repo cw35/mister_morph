@@ -20,15 +20,18 @@ func TestGroupTriggerDecision_ReplyPath(t *testing.T) {
 			From: &telegramUser{ID: 42},
 		},
 	}
-	dec, ok := groupTriggerDecision(msg, "morphbot", 42, nil, "smart", 24)
+	dec, ok, err := groupTriggerDecision(context.Background(), nil, "", msg, "morphbot", 42, nil, "strict", 24, 0, 0.55, 0.55)
+	if err != nil {
+		t.Fatalf("groupTriggerDecision() error = %v", err)
+	}
 	if !ok {
 		t.Fatalf("expected trigger for reply-to-bot")
 	}
 	if dec.Reason != "reply" {
 		t.Fatalf("unexpected reason: %q", dec.Reason)
 	}
-	if strings.TrimSpace(dec.TaskText) != "please continue" {
-		t.Fatalf("unexpected task_text: %q", dec.TaskText)
+	if dec.AddressingLLMImpulse != 1 {
+		t.Fatalf("impulse = %v, want 1", dec.AddressingLLMImpulse)
 	}
 }
 
@@ -36,9 +39,32 @@ func TestGroupTriggerDecision_StrictIgnoresAlias(t *testing.T) {
 	msg := &telegramMessage{
 		Text: "morph can you check this",
 	}
-	_, ok := groupTriggerDecision(msg, "morphbot", 42, []string{"morph"}, "strict", 24)
+	dec, ok, err := groupTriggerDecision(context.Background(), nil, "", msg, "morphbot", 42, []string{"morph"}, "strict", 24, 0, 0.55, 0.55)
+	if err != nil {
+		t.Fatalf("groupTriggerDecision() error = %v", err)
+	}
 	if ok {
 		t.Fatalf("strict mode should ignore alias-only trigger")
+	}
+	_ = dec
+}
+
+func TestGroupTriggerDecision_TalkativeAlwaysRequestsAddressingLLM(t *testing.T) {
+	msg := &telegramMessage{
+		Text: "just discussing among people",
+	}
+	dec, ok, err := groupTriggerDecision(context.Background(), nil, "", msg, "morphbot", 42, nil, "talkative", 24, 0, 0.55, 0.55)
+	if err != nil {
+		t.Fatalf("groupTriggerDecision() error = %v", err)
+	}
+	if ok {
+		t.Fatalf("talkative mode should defer triggering to addressing llm")
+	}
+	if !dec.AddressingLLMAttempted {
+		t.Fatalf("talkative mode should always attempt addressing llm")
+	}
+	if dec.Reason != "talkative" {
+		t.Fatalf("unexpected reason: %q", dec.Reason)
 	}
 }
 
@@ -49,30 +75,61 @@ func TestGroupTriggerDecision_MentionEntityTriggers(t *testing.T) {
 			{Type: "mention", Offset: 0, Length: 9},
 		},
 	}
-	dec, ok := groupTriggerDecision(msg, "morphbot", 42, nil, "strict", 24)
+	dec, ok, err := groupTriggerDecision(context.Background(), nil, "", msg, "morphbot", 42, nil, "strict", 24, 0, 0.55, 0.55)
+	if err != nil {
+		t.Fatalf("groupTriggerDecision() error = %v", err)
+	}
 	if !ok {
 		t.Fatalf("mention entity should trigger")
 	}
 	if dec.Reason != "mention_entity" {
 		t.Fatalf("unexpected reason: %q", dec.Reason)
 	}
-	if strings.Contains(strings.ToLower(dec.TaskText), "@morphbot") {
-		t.Fatalf("task_text should strip bot mention: %q", dec.TaskText)
+	if dec.AddressingLLMImpulse != 1 {
+		t.Fatalf("impulse = %v, want 1", dec.AddressingLLMImpulse)
 	}
 }
 
-func TestGroupTriggerDecision_SmartAliasUncertainHintsAddressingLLM(t *testing.T) {
+func TestGroupTriggerDecision_ExplicitMentionBypassesLLMEvenInTalkative(t *testing.T) {
+	msg := &telegramMessage{
+		Text: "@morphbot hello",
+		Entities: []telegramEntity{
+			{Type: "mention", Offset: 0, Length: 9},
+		},
+	}
+	dec, ok, err := groupTriggerDecision(context.Background(), nil, "", msg, "morphbot", 42, []string{"morph"}, "talkative", 24, 0, 0.55, 0.55)
+	if err != nil {
+		t.Fatalf("groupTriggerDecision() error = %v", err)
+	}
+	if !ok {
+		t.Fatalf("explicit mention should trigger directly")
+	}
+	if dec.Reason != "mention_entity" {
+		t.Fatalf("unexpected reason: %q", dec.Reason)
+	}
+	if dec.AddressingLLMAttempted {
+		t.Fatalf("explicit mention should bypass addressing llm")
+	}
+	if dec.AddressingLLMImpulse != 1 {
+		t.Fatalf("impulse = %v, want 1", dec.AddressingLLMImpulse)
+	}
+}
+
+func TestGroupTriggerDecision_SmartMentionRoutesThroughAddressingLLM(t *testing.T) {
 	msg := &telegramMessage{
 		Text: "let us use morphism to describe this",
 	}
-	dec, ok := groupTriggerDecision(msg, "morphbot", 42, []string{"morph"}, "smart", 24)
+	dec, ok, err := groupTriggerDecision(context.Background(), nil, "", msg, "morphbot", 42, []string{"morph"}, "smart", 24, 0, 0.55, 0.55)
+	if err != nil {
+		t.Fatalf("groupTriggerDecision() error = %v", err)
+	}
 	if ok {
-		t.Fatalf("uncertain alias should not trigger directly")
+		t.Fatalf("without llm client, smart mode should not trigger")
 	}
-	if !dec.NeedsAddressingLLM {
-		t.Fatalf("expected NeedsAddressingLLM for uncertain alias hit")
+	if !dec.AddressingLLMAttempted {
+		t.Fatalf("expected addressing llm to be attempted in smart mode")
 	}
-	if !strings.HasPrefix(dec.Reason, "alias_uncertain:") {
+	if !strings.HasPrefix(dec.Reason, "alias_") {
 		t.Fatalf("unexpected reason: %q", dec.Reason)
 	}
 }

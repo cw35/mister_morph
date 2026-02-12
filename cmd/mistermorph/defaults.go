@@ -67,6 +67,7 @@ func initViperDefaults() {
 	viper.SetDefault("telegram.group_trigger_mode", "smart")
 	viper.SetDefault("telegram.smart_addressing_max_chars", 24)
 	viper.SetDefault("telegram.smart_addressing_confidence", 0.55)
+	viper.SetDefault("telegram.talkative_addressing_confidence", 0.55)
 	viper.SetDefault("telegram.max_concurrency", 3)
 	viper.SetDefault("telegram.reactions.enabled", true)
 	viper.SetDefault("telegram.with_maep", false)

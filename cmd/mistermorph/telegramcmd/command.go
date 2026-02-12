@@ -412,6 +412,13 @@ func newTelegramCmd() *cobra.Command {
 			if smartAddressingConfidence > 1 {
 				smartAddressingConfidence = 1
 			}
+			talkativeAddressingConfidence := configutil.FlagOrViperFloat64(cmd, "telegram-talkative-addressing-confidence", "telegram.talkative_addressing_confidence")
+			if talkativeAddressingConfidence <= 0 {
+				talkativeAddressingConfidence = 0.55
+			}
+			if talkativeAddressingConfidence > 1 {
+				talkativeAddressingConfidence = 1
+			}
 
 			var (
 				mu                 sync.Mutex
@@ -476,6 +483,7 @@ func newTelegramCmd() *cobra.Command {
 				"group_reply_policy", "humanlike",
 				"smart_addressing_max_chars", smartAddressingMaxChars,
 				"smart_addressing_confidence", smartAddressingConfidence,
+				"talkative_addressing_confidence", talkativeAddressingConfidence,
 			)
 
 			enqueueSystemWarning := func(msg string) int {
@@ -1268,66 +1276,43 @@ func newTelegramCmd() *cobra.Command {
 							continue
 						}
 						if isGroup {
-							dec, ok := groupTriggerDecision(msg, botUser, botID, aliases, groupTriggerMode, smartAddressingMaxChars)
-							usedAddressingLLM := false
-							addressingLLMConfidence := 0.0
-							smartAddressing := strings.TrimSpace(strings.ToLower(groupTriggerMode)) != "strict"
-							if smartAddressing && (dec.NeedsAddressingLLM || isAliasReason(dec.Reason)) {
-								addrCtx := context.Background()
-								cancel := func() {}
-								if addressingLLMTimeout > 0 {
-									addrCtx, cancel = context.WithTimeout(context.Background(), addressingLLMTimeout)
-								}
-								llmDec, llmOK, llmErr := addressingDecisionViaLLM(addrCtx, client, model, botUser, aliases, rawText)
-								cancel()
-								if llmErr != nil {
-									logger.Warn("telegram_addressing_llm_error",
-										"chat_id", chatID,
-										"type", chatType,
-										"error", llmErr.Error(),
-									)
-								}
-								if llmOK && llmDec.Addressed && llmDec.Confidence >= smartAddressingConfidence {
-									if dec.NeedsAddressingLLM {
-										dec.Reason = "addressing_llm"
-									} else {
-										dec.Reason = "addressing_llm:" + dec.Reason
-									}
-									dec.TaskText = strings.TrimSpace(stripBotMentions(llmDec.TaskText, botUser))
-									usedAddressingLLM = true
-									addressingLLMConfidence = llmDec.Confidence
-									if dec.TaskText == "" {
-										_ = api.sendMessageMarkdownV2(context.Background(), chatID, "usage: /ask <task> (or send text with a mention/reply)", true)
-										continue
-									}
-									ok = true
-								} else {
+							dec, ok, decErr := groupTriggerDecision(context.Background(), client, model, msg, botUser, botID, aliases, groupTriggerMode, smartAddressingMaxChars, addressingLLMTimeout, smartAddressingConfidence, talkativeAddressingConfidence)
+							if decErr != nil {
+								logger.Warn("telegram_addressing_llm_error",
+									"chat_id", chatID,
+									"type", chatType,
+									"error", decErr.Error(),
+								)
+								continue
+							}
+							if !ok {
+								if dec.AddressingLLMAttempted {
 									logger.Debug("telegram_group_ignored",
 										"chat_id", chatID,
 										"type", chatType,
 										"text_len", len(text),
 										"addressing_llm", true,
-										"llm_ok", llmOK,
-										"llm_addressed", llmDec.Addressed,
-										"llm_confidence", llmDec.Confidence,
+										"llm_ok", dec.AddressingLLMOK,
+										"llm_addressed", dec.AddressingLLMAddressed,
+										"llm_confidence", dec.AddressingLLMConfidence,
+										"llm_impulse", dec.AddressingImpulse,
 									)
-									continue
+								} else {
+									logger.Debug("telegram_group_ignored",
+										"chat_id", chatID,
+										"type", chatType,
+										"text_len", len(text),
+									)
 								}
-							}
-							if !ok {
-								logger.Debug("telegram_group_ignored",
-									"chat_id", chatID,
-									"type", chatType,
-									"text_len", len(text),
-								)
 								continue
 							}
-							if usedAddressingLLM {
+							if dec.UsedAddressingLLM {
 								logger.Info("telegram_group_trigger",
 									"chat_id", chatID,
 									"type", chatType,
 									"trigger", dec.Reason,
-									"confidence", addressingLLMConfidence,
+									"confidence", dec.AddressingLLMConfidence,
+									"impulse", dec.AddressingImpulse,
 								)
 							} else {
 								logger.Info("telegram_group_trigger",
@@ -1336,7 +1321,7 @@ func newTelegramCmd() *cobra.Command {
 									"trigger", dec.Reason,
 								)
 							}
-							text = strings.TrimSpace(dec.TaskText)
+							text = strings.TrimSpace(rawText)
 							if strings.TrimSpace(text) == "" && !messageHasDownloadableFile(msg) && msg.ReplyTo == nil {
 								_ = api.sendMessageMarkdownV2(context.Background(), chatID, "usage: /ask <task> (or send text with a mention/reply)", true)
 								continue
@@ -1440,9 +1425,10 @@ func newTelegramCmd() *cobra.Command {
 	// Note: base_url is intentionally not configurable.
 	cmd.Flags().StringArray("telegram-allowed-chat-id", nil, "Allowed chat id(s). If empty, allows all.")
 	cmd.Flags().StringArray("telegram-alias", nil, "Bot alias keywords (group messages containing these may trigger a response).")
-	cmd.Flags().String("telegram-group-trigger-mode", "smart", "Group trigger mode: strict|smart.")
+	cmd.Flags().String("telegram-group-trigger-mode", "smart", "Group trigger mode: strict|smart|talkative.")
 	cmd.Flags().Int("telegram-smart-addressing-max-chars", 24, "In smart mode, max chars from message start for alias addressing (0 uses default).")
 	cmd.Flags().Float64("telegram-smart-addressing-confidence", 0.55, "Minimum confidence (0-1) required to accept an addressing LLM decision.")
+	cmd.Flags().Float64("telegram-talkative-addressing-confidence", 0.55, "In talkative mode, minimum confidence (0-1) required to accept an addressing LLM decision.")
 	cmd.Flags().Bool("with-maep", false, "Start MAEP listener together with telegram mode.")
 	cmd.Flags().StringArray("maep-listen", nil, "MAEP listen multiaddr for --with-maep (repeatable). Defaults to maep.listen_addrs or MAEP defaults.")
 	cmd.Flags().Duration("telegram-poll-timeout", 30*time.Second, "Long polling timeout for getUpdates.")
@@ -2955,46 +2941,123 @@ func normalizeSlashCommand(cmd string) string {
 }
 
 type telegramGroupTriggerDecision struct {
-	Reason              string
-	TaskText            string
-	NeedsAddressingLLM  bool
-	AddressingLLMHint   string
-	MatchedAliasKeyword string
+	Reason            string
+	UsedAddressingLLM bool
+
+	AddressingLLMAttempted  bool
+	AddressingLLMOK         bool
+	AddressingLLMAddressed  bool
+	AddressingLLMConfidence float64
+	AddressingImpulse       float64
 }
 
 // groupTriggerDecision belongs to the trigger layer.
-// It decides only whether this group message should enter an agent run and what task text to pass.
+// It decides whether this group message should enter an agent run.
 // It must not decide output modality (text reply vs reaction), which is handled in the generation layer.
-func groupTriggerDecision(msg *telegramMessage, botUser string, botID int64, aliases []string, mode string, aliasPrefixMaxChars int) (telegramGroupTriggerDecision, bool) {
+func groupTriggerDecision(ctx context.Context, client llm.Client, model string, msg *telegramMessage, botUser string, botID int64, aliases []string, mode string, aliasPrefixMaxChars int, addressingLLMTimeout time.Duration, smartAddressingConfidence float64, talkativeAddressingConfidence float64) (telegramGroupTriggerDecision, bool, error) {
 	if msg == nil {
-		return telegramGroupTriggerDecision{}, false
+		return telegramGroupTriggerDecision{}, false, nil
 	}
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "" {
+		mode = "smart"
+	}
+	if smartAddressingConfidence <= 0 {
+		smartAddressingConfidence = 0.55
+	}
+	if smartAddressingConfidence > 1 {
+		smartAddressingConfidence = 1
+	}
+	if talkativeAddressingConfidence <= 0 {
+		talkativeAddressingConfidence = 0.55
+	}
+	if talkativeAddressingConfidence > 1 {
+		talkativeAddressingConfidence = 1
+	}
+
 	text := strings.TrimSpace(messageTextOrCaption(msg))
-
-	// Reply-to-bot.
-	if msg.ReplyTo != nil && msg.ReplyTo.From != nil && msg.ReplyTo.From.ID == botID {
-		if text == "" && !messageHasDownloadableFile(msg) {
-			return telegramGroupTriggerDecision{}, false
-		}
-		return telegramGroupTriggerDecision{Reason: "reply", TaskText: stripBotMentions(text, botUser)}, true
+	explicitReason, explicitMentioned := groupExplicitMentionReason(msg, text, botUser, botID)
+	if explicitMentioned {
+		return telegramGroupTriggerDecision{
+			Reason:            explicitReason,
+			AddressingImpulse: 1,
+		}, true, nil
 	}
 
+	runAddressingLLM := func(baseReason string, note string, confidenceThreshold float64) (telegramGroupTriggerDecision, bool, error) {
+		dec := telegramGroupTriggerDecision{
+			Reason:                 baseReason,
+			AddressingLLMAttempted: true,
+		}
+		addrCtx := ctx
+		if addrCtx == nil {
+			addrCtx = context.Background()
+		}
+		cancel := func() {}
+		if addressingLLMTimeout > 0 {
+			addrCtx, cancel = context.WithTimeout(addrCtx, addressingLLMTimeout)
+		}
+		llmDec, llmOK, llmErr := addressingDecisionViaLLM(addrCtx, client, model, botUser, aliases, text, note)
+		cancel()
+		if llmErr != nil {
+			return dec, false, llmErr
+		}
+		dec.AddressingLLMOK = llmOK
+		dec.AddressingLLMAddressed = llmDec.Addressed
+		dec.AddressingLLMConfidence = llmDec.Confidence
+		dec.AddressingImpulse = llmDec.Impulse
+		if llmOK && llmDec.Addressed && llmDec.Confidence >= confidenceThreshold {
+			if strings.TrimSpace(baseReason) == "" {
+				dec.Reason = "addressing_llm"
+			} else {
+				dec.Reason = "addressing_llm:" + baseReason
+			}
+			dec.UsedAddressingLLM = true
+			return dec, true, nil
+		}
+		return dec, false, nil
+	}
+
+	switch mode {
+	case "talkative":
+		return runAddressingLLM("talkative", "group_trigger_mode=talkative; classify every message with SOUL persona", talkativeAddressingConfidence)
+	case "smart":
+		mentionReason, _ := groupAliasMentionReason(text, aliases, aliasPrefixMaxChars)
+		if strings.TrimSpace(mentionReason) == "" {
+			return telegramGroupTriggerDecision{}, false, nil
+		}
+		return runAddressingLLM(mentionReason, "group_trigger_mode=smart; mention_reason="+mentionReason, smartAddressingConfidence)
+	default: // strict (and unknown values fallback to strict behavior)
+		return telegramGroupTriggerDecision{}, false, nil
+	}
+}
+
+func groupExplicitMentionReason(msg *telegramMessage, text string, botUser string, botID int64) (string, bool) {
+	// Reply-to-bot.
+	if msg != nil && msg.ReplyTo != nil && msg.ReplyTo.From != nil && msg.ReplyTo.From.ID == botID {
+		if text == "" && !messageHasDownloadableFile(msg) {
+			return "", false
+		}
+		return "reply", true
+	}
 	if text == "" {
-		return telegramGroupTriggerDecision{}, false
+		return "", false
 	}
 
 	// Entity-based mention of the bot (text_mention includes user id; mention includes "@username").
-	for _, e := range msg.Entities {
-		switch strings.ToLower(strings.TrimSpace(e.Type)) {
-		case "text_mention":
-			if e.User != nil && e.User.ID == botID {
-				return telegramGroupTriggerDecision{Reason: "text_mention", TaskText: stripBotMentions(text, botUser)}, true
-			}
-		case "mention":
-			if botUser != "" {
-				mention := sliceByUTF16(text, e.Offset, e.Length)
-				if strings.EqualFold(mention, "@"+botUser) {
-					return telegramGroupTriggerDecision{Reason: "mention_entity", TaskText: stripBotMentions(text, botUser)}, true
+	if msg != nil {
+		for _, e := range msg.Entities {
+			switch strings.ToLower(strings.TrimSpace(e.Type)) {
+			case "text_mention":
+				if e.User != nil && e.User.ID == botID {
+					return "text_mention", true
+				}
+			case "mention":
+				if botUser != "" {
+					mention := sliceByUTF16(text, e.Offset, e.Length)
+					if strings.EqualFold(mention, "@"+botUser) {
+						return "mention_entity", true
+					}
 				}
 			}
 		}
@@ -3002,46 +3065,22 @@ func groupTriggerDecision(msg *telegramMessage, botUser string, botID int64, ali
 
 	// Fallback explicit @mention (some clients may omit entities).
 	if botUser != "" && strings.Contains(strings.ToLower(text), "@"+strings.ToLower(botUser)) {
-		return telegramGroupTriggerDecision{Reason: "at_mention", TaskText: stripBotMentions(text, botUser)}, true
+		return "at_mention", true
 	}
+	return "", false
+}
 
-	mode = strings.ToLower(strings.TrimSpace(mode))
-	switch mode {
-	case "strict":
-		return telegramGroupTriggerDecision{}, false
-	case "", "smart":
-		m, ok := matchAddressedAliasSmart(text, aliases, aliasPrefixMaxChars)
-		if !ok {
-			if hit, ok := anyAliasContains(text, aliases); ok {
-				return telegramGroupTriggerDecision{
-					Reason:              "alias_uncertain:" + hit,
-					TaskText:            stripBotMentions(text, botUser),
-					NeedsAddressingLLM:  true,
-					AddressingLLMHint:   "alias_hit_but_not_direct_addressing",
-					MatchedAliasKeyword: hit,
-				}, false
-			}
-			return telegramGroupTriggerDecision{}, false
-		}
-		task := stripBotMentions(m.TaskText, botUser)
-		return telegramGroupTriggerDecision{Reason: "alias_smart:" + m.Alias, TaskText: task}, true
-	default:
-		m, ok := matchAddressedAliasSmart(text, aliases, aliasPrefixMaxChars)
-		if !ok {
-			if hit, ok := anyAliasContains(text, aliases); ok {
-				return telegramGroupTriggerDecision{
-					Reason:              "alias_uncertain:" + hit,
-					TaskText:            stripBotMentions(text, botUser),
-					NeedsAddressingLLM:  true,
-					AddressingLLMHint:   "alias_hit_but_not_direct_addressing",
-					MatchedAliasKeyword: hit,
-				}, false
-			}
-			return telegramGroupTriggerDecision{}, false
-		}
-		task := stripBotMentions(m.TaskText, botUser)
-		return telegramGroupTriggerDecision{Reason: "alias_smart:" + m.Alias, TaskText: task}, true
+func groupAliasMentionReason(text string, aliases []string, aliasPrefixMaxChars int) (string, bool) {
+	if strings.TrimSpace(text) == "" {
+		return "", false
 	}
+	if m, ok := matchAddressedAliasSmart(text, aliases, aliasPrefixMaxChars); ok {
+		return "alias_smart:" + m.Alias, true
+	}
+	if hit, ok := anyAliasContains(text, aliases); ok {
+		return "alias_mention:" + hit, true
+	}
+	return "", false
 }
 
 const mentionUserSnapshotLimit = 12
@@ -3915,11 +3954,6 @@ func anyAliasContains(text string, aliases []string) (string, bool) {
 	return "", false
 }
 
-func isAliasReason(reason string) bool {
-	reason = strings.TrimSpace(reason)
-	return strings.HasPrefix(reason, "alias_smart:")
-}
-
 func isAliasAddressingCandidate(text string, prefixStart int, aliasIdx int, aliasPrefixMaxChars int) bool {
 	if aliasIdx < 0 || aliasIdx > len(text) {
 		return false
@@ -4135,27 +4169,21 @@ func lowerASCII(b byte) byte {
 type telegramAddressingLLMDecision struct {
 	Addressed  bool    `json:"addressed"`
 	Confidence float64 `json:"confidence"`
-	TaskText   string  `json:"task_text"`
+	Impulse    float64 `json:"impulse"`
 	Reason     string  `json:"reason"`
 }
 
-func addressingDecisionViaLLM(ctx context.Context, client llm.Client, model string, botUser string, aliases []string, text string) (telegramAddressingLLMDecision, bool, error) {
+func addressingDecisionViaLLM(ctx context.Context, client llm.Client, model string, botUser string, aliases []string, text string, note string) (telegramAddressingLLMDecision, bool, error) {
 	if ctx == nil || client == nil {
 		return telegramAddressingLLMDecision{}, false, nil
 	}
 	text = strings.TrimSpace(text)
-	if text == "" {
-		return telegramAddressingLLMDecision{}, false, nil
-	}
 	model = strings.TrimSpace(model)
 	if model == "" {
 		return telegramAddressingLLMDecision{}, false, fmt.Errorf("missing model for addressing_llm")
 	}
-	if len(aliases) == 0 {
-		return telegramAddressingLLMDecision{}, false, nil
-	}
 
-	sys, user, err := renderTelegramAddressingPrompts(botUser, aliases, text)
+	sys, user, err := renderTelegramAddressingPrompts(botUser, aliases, text, note)
 	if err != nil {
 		return telegramAddressingLLMDecision{}, false, fmt.Errorf("render addressing prompts: %w", err)
 	}
@@ -4188,11 +4216,13 @@ func addressingDecisionViaLLM(ctx context.Context, client llm.Client, model stri
 	if out.Confidence > 1 {
 		out.Confidence = 1
 	}
-	out.TaskText = strings.TrimSpace(out.TaskText)
-	out.Reason = strings.TrimSpace(out.Reason)
-	if !out.Addressed {
-		out.TaskText = ""
+	if out.Impulse < 0 {
+		out.Impulse = 0
 	}
+	if out.Impulse > 1 {
+		out.Impulse = 1
+	}
+	out.Reason = strings.TrimSpace(out.Reason)
 	return out, true, nil
 }
 
