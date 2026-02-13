@@ -217,14 +217,9 @@ func (e *Engine) runLoop(ctx context.Context, st *engineLoopState) (*Final, *Con
 
 				thought := truncateString(fp.Thought, e.logOpts.MaxThoughtChars)
 				if e.logOpts.IncludeThoughts {
-					log.Info("final", "step", step, "thought", thought)
+					log.Info("final", "step", step, "thought", thought, "reaction", fp.Reaction, "is_lightweight", fp.IsLightweight)
 				} else {
-					log.Info("final", "step", step, "thought_len", len(fp.Thought))
-				}
-				if e.logOpts.IncludeThoughts {
-					log.Debug("final_thought", "step", step, "thought", thought)
-				} else {
-					log.Debug("final_thought_len", "step", step, "thought_len", len(fp.Thought))
+					log.Info("final", "step", step, "thought_len", len(fp.Thought), "reaction", fp.Reaction, "is_lightweight", fp.IsLightweight)
 				}
 			}
 			return fp, st.agentCtx, nil

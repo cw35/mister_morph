@@ -71,9 +71,11 @@ type PlanStepUpdate struct {
 }
 
 type Final struct {
-	Thought string `json:"thought,omitempty"`
-	Output  any    `json:"output,omitempty"`
-	Plan    *Plan  `json:"plan,omitempty"`
+	Thought       string `json:"thought,omitempty"`
+	Output        any    `json:"output,omitempty"`
+	Plan          *Plan  `json:"plan,omitempty"`
+	Reaction      string `json:"reaction,omitempty"`
+	IsLightweight bool   `json:"is_lightweight,omitempty"`
 }
 
 type AgentResponse struct {

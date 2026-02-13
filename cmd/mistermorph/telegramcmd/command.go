@@ -311,11 +311,6 @@ func newTelegramCmd() *cobra.Command {
 				IntentTimeout:    requestTimeout,
 				IntentMaxHistory: viper.GetInt("intent.max_history"),
 			}
-			var maepMemMgr *memory.Manager
-			if viper.GetBool("memory.enabled") {
-				maepMemMgr = memory.NewManager(statepaths.MemoryDir(), viper.GetInt("memory.short_term_days"))
-			}
-
 			pollTimeout := configutil.FlagOrViperDuration(cmd, "telegram-poll-timeout", "telegram.poll_timeout")
 			if pollTimeout <= 0 {
 				pollTimeout = 30 * time.Second
@@ -621,7 +616,7 @@ func newTelegramCmd() *cobra.Command {
 							}
 
 							ctx, cancel := context.WithTimeout(context.Background(), taskTimeout)
-							final, _, loadedSkills, reaction, runErr := runTelegramTask(ctx, logger, logOpts, client, reg, api, filesEnabled, fileCacheDir, filesMaxBytes, sharedGuard, cfg, reactionCfg, allowed, job, model, h, sticky, requestTimeout, publishTelegramText)
+							final, _, loadedSkills, reaction, runErr := runTelegramTask(ctx, logger, logOpts, client, reg, api, filesEnabled, fileCacheDir, filesMaxBytes, sharedGuard, cfg, reactionCfg, allowed, job, model, h, telegramHistoryCap, sticky, requestTimeout, publishTelegramText)
 							cancel()
 
 							if runErr != nil {
@@ -961,7 +956,7 @@ func newTelegramCmd() *cobra.Command {
 
 							logger.Info("telegram_maep_task_enqueued", "from_peer_id", peerID, "topic", event.Topic, "task_len", len(task))
 							runCtx, cancel := context.WithTimeout(context.Background(), taskTimeout)
-							final, _, loadedSkills, runErr := runMAEPTask(runCtx, logger, logOpts, client, reg, sharedGuard, cfg, model, peerID, maepMemMgr, h, sticky, task)
+							final, _, loadedSkills, runErr := runMAEPTask(runCtx, logger, logOpts, client, reg, sharedGuard, cfg, model, peerID, h, sticky, task)
 							cancel()
 							if runErr != nil {
 								logger.Warn("telegram_maep_task_error", "from_peer_id", peerID, "topic", event.Topic, "error", runErr.Error())
@@ -972,24 +967,6 @@ func newTelegramCmd() *cobra.Command {
 							if output == "" {
 								continue
 							}
-							if maepMemMgr != nil {
-								contactID := chooseBusinessContactID("", peerID)
-								contactNickname := ""
-								if contactsSvc != nil {
-									item, found, getErr := contactsSvc.GetContact(context.Background(), contactID)
-									if getErr != nil {
-										logger.Warn("memory_maep_contact_lookup_error", "peer_id", peerID, "error", getErr.Error())
-									} else if found {
-										contactNickname = strings.TrimSpace(item.ContactNickname)
-									}
-								}
-								if memErr := updateMAEPMemory(context.Background(), logger, client, model, maepMemMgr, peerID, event.Topic, sessionID, task, output, h, contactID, contactNickname, requestTimeout); memErr != nil {
-									logger.Warn("memory_update_error", "source", "maep", "peer_id", peerID, "error", memErr.Error())
-								} else {
-									logger.Info("memory_update_ok", "source", "maep", "peer_id", peerID, "topic", event.Topic)
-								}
-							}
-
 							pushCtx, pushCancel := context.WithTimeout(context.Background(), maepPushTimeout(requestTimeout))
 							replyTopic := resolveMAEPReplyTopic(event.Topic)
 							replyMessageID, pushErr := publishMAEPBusOutbound(pushCtx, inprocBus, peerID, replyTopic, output, sessionID, event.ReplyTo, fmt.Sprintf("maep:reply:%s", peerID))
@@ -1528,7 +1505,7 @@ func newTelegramCmd() *cobra.Command {
 	return cmd
 }
 
-func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, api *telegramAPI, filesEnabled bool, fileCacheDir string, filesMaxBytes int64, sharedGuard *guard.Guard, cfg agent.Config, reactionCfg telegramReactionConfig, allowedIDs map[int64]bool, job telegramJob, model string, history []chathistory.ChatHistoryItem, stickySkills []string, requestTimeout time.Duration, sendTelegramText func(context.Context, int64, string, string) error) (*agent.Final, *agent.Context, []string, *telegramReaction, error) {
+func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, api *telegramAPI, filesEnabled bool, fileCacheDir string, filesMaxBytes int64, sharedGuard *guard.Guard, cfg agent.Config, reactionCfg telegramReactionConfig, allowedIDs map[int64]bool, job telegramJob, model string, history []chathistory.ChatHistoryItem, historyCap int, stickySkills []string, requestTimeout time.Duration, sendTelegramText func(context.Context, int64, string, string) error) (*agent.Final, *agent.Context, []string, *telegramReaction, error) {
 	if sendTelegramText == nil {
 		return nil, nil, nil, nil, fmt.Errorf("send telegram text callback is required")
 	}
@@ -1761,10 +1738,10 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	}
 
 	if reaction == nil && !job.IsHeartbeat && memManager != nil && memIdentity.Enabled && strings.TrimSpace(memIdentity.SubjectID) != "" {
-		if err := updateTelegramMemory(ctx, logger, client, model, memManager, memIdentity, job, llmHistory, final, requestTimeout); err != nil {
+		if err := updateTelegramMemory(ctx, logger, client, model, memManager, memIdentity, job, history, historyCap, final, requestTimeout); err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
 				retryutil.AsyncRetry(logger, "memory_update", 2*time.Second, requestTimeout, func(retryCtx context.Context) error {
-					return updateTelegramMemory(retryCtx, logger, client, model, memManager, memIdentity, job, llmHistory, final, requestTimeout)
+					return updateTelegramMemory(retryCtx, logger, client, model, memManager, memIdentity, job, history, historyCap, final, requestTimeout)
 				})
 			}
 			logger.Warn("memory_update_error", "error", err.Error())
@@ -1806,7 +1783,7 @@ func applyTelegramGroupRuntimePromptRules(spec *agent.PromptSpec, chatType strin
 	)
 }
 
-func runMAEPTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, sharedGuard *guard.Guard, cfg agent.Config, model string, peerID string, memManager *memory.Manager, history []llm.Message, stickySkills []string, task string) (*agent.Final, *agent.Context, []string, error) {
+func runMAEPTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, sharedGuard *guard.Guard, cfg agent.Config, model string, peerID string, history []llm.Message, stickySkills []string, task string) (*agent.Final, *agent.Context, []string, error) {
 	if strings.TrimSpace(task) == "" {
 		return nil, nil, nil, fmt.Errorf("empty maep task")
 	}
@@ -1826,32 +1803,6 @@ func runMAEPTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOpti
 	promptprofile.AppendLocalToolNotesBlock(&promptSpec, logger)
 	applyChatPersonaRules(&promptSpec)
 	// applyMAEPReplyPromptRules(&promptSpec)
-	if memManager != nil && viper.GetBool("memory.injection.enabled") {
-		peerID = strings.TrimSpace(peerID)
-		if peerID != "" {
-			subjectID := "ext:maep:" + peerID
-			maxItems := viper.GetInt("memory.injection.max_items")
-			snap, err := memManager.BuildInjection(subjectID, memory.ContextPrivate, maxItems)
-			if err != nil {
-				return nil, nil, nil, fmt.Errorf("memory injection: %w", err)
-			}
-			if strings.TrimSpace(snap) != "" {
-				promptSpec.Blocks = append(promptSpec.Blocks, agent.PromptBlock{
-					Title:   "Memory Summaries",
-					Content: snap,
-				})
-				if logger != nil {
-					logger.Info("memory_injection_applied", "source", "maep", "subject_id", subjectID, "peer_id", peerID, "snapshot_len", len(snap))
-				}
-			} else if logger != nil {
-				logger.Debug("memory_injection_skipped", "source", "maep", "reason", "empty_snapshot", "subject_id", subjectID, "peer_id", peerID)
-			}
-		} else if logger != nil {
-			logger.Debug("memory_injection_skipped", "source", "maep", "reason", "empty_peer_id")
-		}
-	} else if logger != nil {
-		logger.Debug("memory_injection_skipped", "source", "maep", "reason", "disabled_or_no_manager")
-	}
 
 	engine := agent.New(
 		client,
@@ -1977,11 +1928,12 @@ func generateTelegramPlanProgressMessage(ctx context.Context, client llm.Client,
 	return strings.TrimSpace(result.Text), nil
 }
 
-func updateTelegramMemory(ctx context.Context, logger *slog.Logger, client llm.Client, model string, mgr *memory.Manager, id memory.Identity, job telegramJob, history []llm.Message, final *agent.Final, requestTimeout time.Duration) error {
+func updateTelegramMemory(ctx context.Context, logger *slog.Logger, client llm.Client, model string, mgr *memory.Manager, id memory.Identity, job telegramJob, history []chathistory.ChatHistoryItem, historyCap int, final *agent.Final, requestTimeout time.Duration) error {
 	if mgr == nil || client == nil {
 		return nil
 	}
 	output := formatFinalOutput(final)
+	date := time.Now().UTC()
 	contactNickname := strings.TrimSpace(job.FromDisplayName)
 	if contactNickname == "" {
 		contactNickname = strings.TrimSpace(strings.Join([]string{job.FromFirstName, job.FromLastName}, " "))
@@ -2004,70 +1956,6 @@ func updateTelegramMemory(ctx context.Context, logger *slog.Logger, client llm.C
 	if ctxInfo.CounterpartyName == "" {
 		ctxInfo.CounterpartyName = strings.TrimSpace(strings.Join([]string{job.FromFirstName, job.FromLastName}, " "))
 	}
-	return updateSessionMemory(ctx, logger, client, model, mgr, id.SubjectID, meta, history, job.Text, output, ctxInfo, requestTimeout)
-}
-
-func updateMAEPMemory(ctx context.Context, logger *slog.Logger, client llm.Client, model string, mgr *memory.Manager, peerID string, inboundTopic string, inboundSessionID string, inboundText string, outboundText string, history []llm.Message, contactID string, contactNickname string, requestTimeout time.Duration) error {
-	if mgr == nil || client == nil {
-		return nil
-	}
-	peerID = strings.TrimSpace(peerID)
-	if peerID == "" {
-		return nil
-	}
-	sessionID := strings.TrimSpace(inboundSessionID)
-	if sessionID == "" {
-		sessionID = peerID
-	}
-	// Keep one short-term memory file per peer per day:
-	// memory/<date>/maep_<peer_id>.md
-	memSessionID := "maep:" + peerID
-	subjectID := "ext:maep:" + peerID
-	contactID = strings.TrimSpace(contactID)
-	if contactID == "" {
-		contactID = "maep:" + peerID
-	}
-	contactNickname = strings.TrimSpace(contactNickname)
-	if contactNickname == "" {
-		contactNickname = contactID
-	}
-	channel := strings.TrimSpace(inboundTopic)
-	if channel == "" {
-		channel = "maep"
-	}
-	meta := memory.WriteMeta{
-		SessionID:        memSessionID,
-		ContactIDs:       []string{contactID},
-		ContactNicknames: []string{contactNickname},
-	}
-	ctxInfo := MemoryDraftContext{
-		SessionID:          "maep_session:" + sessionID,
-		ChatType:           channel,
-		CounterpartyName:   contactNickname,
-		CounterpartyHandle: peerID,
-		TimestampUTC:       time.Now().UTC().Format(time.RFC3339),
-	}
-	return updateSessionMemory(ctx, logger, client, model, mgr, subjectID, meta, history, inboundText, outboundText, ctxInfo, requestTimeout)
-}
-
-func updateSessionMemory(
-	ctx context.Context,
-	logger *slog.Logger,
-	client llm.Client,
-	model string,
-	mgr *memory.Manager,
-	subjectID string,
-	meta memory.WriteMeta,
-	history []llm.Message,
-	task string,
-	output string,
-	ctxInfo MemoryDraftContext,
-	requestTimeout time.Duration,
-) error {
-	if mgr == nil || client == nil {
-		return nil
-	}
-	date := time.Now().UTC()
 	_, existingContent, hasExisting, err := mgr.LoadShortTerm(date, meta.SessionID)
 	if err != nil {
 		return err
@@ -2081,11 +1969,12 @@ func updateSessionMemory(
 	defer cancel()
 	ctxInfo.CounterpartyLabel = buildMemoryCounterpartyLabel(meta, ctxInfo)
 
-	draft, err := BuildMemoryDraft(memCtx, client, model, history, task, output, existingContent, ctxInfo)
+	draftHistory := buildTelegramMemoryDraftHistory(history, job, output, date, historyCap)
+	draft, err := BuildMemoryDraft(memCtx, client, model, draftHistory, job.Text, output, existingContent, ctxInfo)
 	if err != nil {
 		return err
 	}
-	draft.Promote = EnforceLongTermPromotionRules(draft.Promote, history, task)
+	draft.Promote = EnforceLongTermPromotionRules(draft.Promote, nil, job.Text)
 
 	var mergedContent memory.ShortTermContent
 	if hasExisting && HasDraftContent(draft) {
@@ -2103,13 +1992,25 @@ func updateSessionMemory(
 	if err != nil {
 		return err
 	}
-	if _, err := mgr.UpdateLongTerm(subjectID, draft.Promote); err != nil {
+	if _, err := mgr.UpdateLongTerm(id.SubjectID, draft.Promote); err != nil {
 		return err
 	}
 	if logger != nil {
-		logger.Debug("memory_update_ok", "subject_id", subjectID)
+		logger.Debug("memory_update_ok", "subject_id", id.SubjectID)
 	}
 	return nil
+}
+
+func buildTelegramMemoryDraftHistory(history []chathistory.ChatHistoryItem, job telegramJob, output string, now time.Time, maxItems int) []chathistory.ChatHistoryItem {
+	out := append([]chathistory.ChatHistoryItem{}, history...)
+	out = append(out, newTelegramInboundHistoryItem(job))
+	if strings.TrimSpace(output) != "" {
+		out = append(out, newTelegramOutboundAgentHistoryItem(job.ChatID, job.ChatType, output, now, ""))
+	}
+	if maxItems > 0 && len(out) > maxItems {
+		out = out[len(out)-maxItems:]
+	}
+	return out
 }
 
 type MemoryDraftContext struct {
@@ -2154,13 +2055,12 @@ func firstNonEmptyString(values ...string) string {
 	return ""
 }
 
-func BuildMemoryDraft(ctx context.Context, client llm.Client, model string, history []llm.Message, task string, output string, existing memory.ShortTermContent, ctxInfo MemoryDraftContext) (memory.SessionDraft, error) {
+func BuildMemoryDraft(ctx context.Context, client llm.Client, model string, history []chathistory.ChatHistoryItem, task string, output string, existing memory.ShortTermContent, ctxInfo MemoryDraftContext) (memory.SessionDraft, error) {
 	if client == nil {
 		return memory.SessionDraft{}, fmt.Errorf("nil llm client")
 	}
 
-	conversation := buildMemoryContextMessages(history, task, output)
-	sys, user, err := renderMemoryDraftPrompts(ctxInfo, conversation, existing)
+	sys, user, err := renderMemoryDraftPrompts(ctxInfo, history, task, output, existing)
 	if err != nil {
 		return memory.SessionDraft{}, fmt.Errorf("render memory draft prompts: %w", err)
 	}
@@ -2334,39 +2234,6 @@ func normalizeMemorySummaryItems(input []string) []string {
 	}
 	if len(out) == 0 {
 		return nil
-	}
-	return out
-}
-
-func buildMemoryContextMessages(history []llm.Message, task string, output string) []map[string]string {
-	msgs := make([]llm.Message, 0, len(history)+2)
-	for _, m := range history {
-		if strings.TrimSpace(m.Role) == "system" {
-			continue
-		}
-		msgs = append(msgs, m)
-	}
-	if strings.TrimSpace(task) != "" {
-		msgs = append(msgs, llm.Message{Role: "user", Content: task})
-	}
-	if strings.TrimSpace(output) != "" {
-		msgs = append(msgs, llm.Message{Role: "assistant", Content: output})
-	}
-	if len(msgs) > 6 {
-		msgs = msgs[len(msgs)-6:]
-	}
-
-	out := make([]map[string]string, 0, len(msgs))
-	for _, m := range msgs {
-		role := strings.ToLower(strings.TrimSpace(m.Role))
-		content := strings.TrimSpace(m.Content)
-		if role == "" || content == "" {
-			continue
-		}
-		out = append(out, map[string]string{
-			"role":    role,
-			"content": truncateRunes(content, 1200),
-		})
 	}
 	return out
 }

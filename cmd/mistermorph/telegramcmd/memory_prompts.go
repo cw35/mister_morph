@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"text/template"
 
+	"github.com/quailyquaily/mistermorph/internal/chathistory"
 	"github.com/quailyquaily/mistermorph/internal/prompttmpl"
 	"github.com/quailyquaily/mistermorph/memory"
 )
@@ -30,13 +31,17 @@ var memoryDraftUserPromptTemplate = prompttmpl.MustParse("telegram_memory_draft_
 
 type memoryDraftUserPromptData struct {
 	SessionContext       MemoryDraftContext
-	Conversation         []map[string]string
+	ChatHistory          chathistory.ContextPayload
+	CurrentTask          string
+	CurrentOutput        string
 	ExistingSummaryItems []memory.SummaryItem
 }
 
 func renderMemoryDraftPrompts(
 	ctxInfo MemoryDraftContext,
-	conversation []map[string]string,
+	history []chathistory.ChatHistoryItem,
+	task string,
+	output string,
 	existing memory.ShortTermContent,
 ) (string, string, error) {
 	systemPrompt, err := prompttmpl.Render(memoryDraftSystemPromptTemplate, struct{}{})
@@ -45,7 +50,9 @@ func renderMemoryDraftPrompts(
 	}
 	userPrompt, err := prompttmpl.Render(memoryDraftUserPromptTemplate, memoryDraftUserPromptData{
 		SessionContext:       ctxInfo,
-		Conversation:         conversation,
+		ChatHistory:          chathistory.BuildContextPayload(chathistory.ChannelTelegram, history),
+		CurrentTask:          task,
+		CurrentOutput:        output,
 		ExistingSummaryItems: existing.SummaryItems,
 	})
 	if err != nil {

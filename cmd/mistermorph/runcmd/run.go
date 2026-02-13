@@ -13,22 +13,18 @@ import (
 	"time"
 
 	"github.com/quailyquaily/mistermorph/agent"
-	telegramcmd "github.com/quailyquaily/mistermorph/cmd/mistermorph/telegramcmd"
 	"github.com/quailyquaily/mistermorph/guard"
 	"github.com/quailyquaily/mistermorph/internal/configutil"
-	"github.com/quailyquaily/mistermorph/internal/entryutil"
 	"github.com/quailyquaily/mistermorph/internal/heartbeatutil"
 	"github.com/quailyquaily/mistermorph/internal/llmconfig"
 	"github.com/quailyquaily/mistermorph/internal/llminspect"
 	"github.com/quailyquaily/mistermorph/internal/llmutil"
 	"github.com/quailyquaily/mistermorph/internal/logutil"
 	"github.com/quailyquaily/mistermorph/internal/promptprofile"
-	"github.com/quailyquaily/mistermorph/internal/retryutil"
 	"github.com/quailyquaily/mistermorph/internal/skillsutil"
 	"github.com/quailyquaily/mistermorph/internal/statepaths"
 	"github.com/quailyquaily/mistermorph/internal/toolsutil"
 	"github.com/quailyquaily/mistermorph/llm"
-	"github.com/quailyquaily/mistermorph/memory"
 	"github.com/quailyquaily/mistermorph/tools"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -148,29 +144,6 @@ func New(deps Dependencies) *cobra.Command {
 			promptprofile.ApplyPersonaIdentity(&promptSpec, logger)
 			promptprofile.AppendLocalToolNotesBlock(&promptSpec, logger)
 
-			var memManager *memory.Manager
-			var memIdentity memory.Identity
-			if viper.GetBool("memory.enabled") {
-				id := resolveRunMemoryIdentity()
-				if id.Enabled && strings.TrimSpace(id.SubjectID) != "" {
-					memIdentity = id
-					memManager = memory.NewManager(statepaths.MemoryDir(), viper.GetInt("memory.short_term_days"))
-					if viper.GetBool("memory.injection.enabled") {
-						maxItems := viper.GetInt("memory.injection.max_items")
-						snap, err := memManager.BuildInjection(id.SubjectID, memory.ContextPrivate, maxItems)
-						if err != nil {
-							return fmt.Errorf("memory injection: %w", err)
-						}
-						if strings.TrimSpace(snap) != "" {
-							promptSpec.Blocks = append(promptSpec.Blocks, agent.PromptBlock{
-								Title:   "Memory Summaries",
-								Content: snap,
-							})
-						}
-					}
-				}
-			}
-
 			var hook agent.Hook
 			if configutil.FlagOrViperBool(cmd, "interactive", "interactive") {
 				hook, err = newInteractiveHook()
@@ -233,17 +206,6 @@ func New(deps Dependencies) *cobra.Command {
 				return err
 			}
 
-			if !isHeartbeat && memManager != nil && memIdentity.Enabled && strings.TrimSpace(memIdentity.SubjectID) != "" {
-				if err := updateRunMemory(ctx, logger, client, model, memManager, memIdentity, task, final, requestTimeout); err != nil {
-					if errors.Is(err, context.DeadlineExceeded) {
-						retryutil.AsyncRetry(logger, "memory_update", 2*time.Second, requestTimeout, func(retryCtx context.Context) error {
-							return updateRunMemory(retryCtx, logger, client, model, memManager, memIdentity, task, final, requestTimeout)
-						})
-					}
-					logger.Warn("memory_update_error", "error", err.Error())
-				}
-			}
-
 			logger.Info("run_done",
 				"steps", len(runCtx.Steps),
 				"llm_rounds", runCtx.Metrics.LLMRounds,
@@ -281,81 +243,6 @@ func New(deps Dependencies) *cobra.Command {
 	return cmd
 }
 
-func resolveRunMemoryIdentity() memory.Identity {
-	return memory.Identity{
-		Enabled:     true,
-		ExternalKey: "CLI_USER",
-		SubjectID:   "CLI_USER",
-	}
-}
-
-func updateRunMemory(ctx context.Context, logger *slog.Logger, client llm.Client, model string, mgr *memory.Manager, id memory.Identity, task string, final *agent.Final, requestTimeout time.Duration) error {
-	if mgr == nil || client == nil {
-		return nil
-	}
-	output := heartbeatutil.FormatFinalOutput(final)
-	contactNickname := strings.TrimSpace(os.Getenv("USER"))
-	if contactNickname == "" {
-		contactNickname = strings.TrimSpace(os.Getenv("USERNAME"))
-	}
-	meta := memory.WriteMeta{
-		SessionID:        "cli",
-		ContactIDs:       []string{strings.TrimSpace(id.SubjectID)},
-		ContactNicknames: []string{contactNickname},
-	}
-	date := time.Now().UTC()
-	_, existingContent, hasExisting, err := mgr.LoadShortTerm(date, meta.SessionID)
-	if err != nil {
-		return err
-	}
-
-	memCtx := ctx
-	cancel := func() {}
-	if requestTimeout > 0 {
-		memCtx, cancel = context.WithTimeout(ctx, requestTimeout)
-	}
-	defer cancel()
-
-	ctxInfo := telegramcmd.MemoryDraftContext{
-		SessionID:        meta.SessionID,
-		ChatType:         "cli",
-		CounterpartyName: strings.TrimSpace(os.Getenv("USER")),
-		TimestampUTC:     date.Format(time.RFC3339),
-	}
-	if ctxInfo.CounterpartyName == "" {
-		ctxInfo.CounterpartyName = strings.TrimSpace(os.Getenv("USERNAME"))
-	}
-
-	draft, err := telegramcmd.BuildMemoryDraft(memCtx, client, model, nil, task, output, existingContent, ctxInfo)
-	if err != nil {
-		return err
-	}
-	draft.Promote = telegramcmd.EnforceLongTermPromotionRules(draft.Promote, nil, task)
-
-	var mergedContent memory.ShortTermContent
-	if hasExisting && telegramcmd.HasDraftContent(draft) {
-		semantic, mergeErr := telegramcmd.SemanticMergeShortTerm(memCtx, client, model, existingContent, draft)
-		if mergeErr != nil {
-			return mergeErr
-		}
-		mergedContent = semantic
-	} else {
-		mergedContent = memory.MergeShortTerm(existingContent, draft, date.UTC().Format(entryutil.TimestampLayout))
-	}
-
-	if _, err := mgr.WriteShortTerm(date, mergedContent, meta); err != nil {
-		return err
-	}
-
-	if _, err := mgr.UpdateLongTerm(id.SubjectID, draft.Promote); err != nil {
-		return err
-	}
-	if logger != nil {
-		logger.Debug("memory_update_ok", "subject_id", id.SubjectID)
-	}
-	return nil
-
-}
 func formatPlanProgressUpdate(runCtx *agent.Context, update agent.PlanStepUpdate) string {
 	if runCtx == nil || runCtx.Plan == nil {
 		return ""

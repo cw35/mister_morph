@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/quailyquaily/mistermorph/tools"
@@ -82,10 +83,8 @@ func appendRule(rules []string, rule string) []string {
 	if rule == "" {
 		return rules
 	}
-	for _, existing := range rules {
-		if existing == rule {
-			return rules
-		}
+	if slices.Contains(rules, rule) {
+		return rules
 	}
 	return append(rules, rule)
 }

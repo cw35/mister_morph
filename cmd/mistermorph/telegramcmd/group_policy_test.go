@@ -211,6 +211,7 @@ func TestRunTelegramTask_PreflightReactionNoTextReply(t *testing.T) {
 		},
 		"test-model",
 		nil,
+		8,
 		nil,
 		5*time.Second,
 		func(ctx context.Context, chatID int64, text string, correlationID string) error { return nil },
