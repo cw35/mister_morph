@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"strings"
 	"testing"
 	"time"
 
@@ -204,11 +203,10 @@ func TestApplyMAEPReplyPromptRules(t *testing.T) {
 		Rules: []string{"baseline"},
 	}
 	applyMAEPReplyPromptRules(&spec)
-	joined := strings.Join(spec.Rules, "\n")
-	if !strings.Contains(joined, "sent verbatim to a remote peer") {
-		t.Fatalf("expected maep reply rule to be appended")
+	if !hasPromptBlockTitle(spec.Blocks, "MAEP Reply Policy") {
+		t.Fatalf("expected MAEP reply policy block to be appended")
 	}
-	if !strings.Contains(joined, "Never mention topics/protocol labels") {
-		t.Fatalf("expected protocol metadata rule to be appended")
+	if !hasBlockContaining(spec.Blocks, "MAEP Reply Policy", "Never mention topics/protocol labels") {
+		t.Fatalf("expected protocol metadata guidance in MAEP reply policy block")
 	}
 }

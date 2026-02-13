@@ -1552,21 +1552,7 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	}
 	promptprofile.ApplyPersonaIdentity(&promptSpec, logger)
 	promptprofile.AppendLocalToolNotesBlock(&promptSpec, logger)
-	applyChatPersonaRules(&promptSpec)
-
-	// Telegram replies are rendered using Telegram Markdown (MarkdownV2 first; fallback to Markdown/plain).
-	// Underscores in identifiers like "new_york" will render as italics unless the model wraps them in
-	// backticks. Give the model a channel-specific reminder.
-	promptSpec.Rules = append(promptSpec.Rules,
-		"In your final.output string, write for Telegram MarkdownV2 with LIMITED syntax only: *bold*, _italic_, __underline__, ~strikethrough~, ||spoiler||. Avoid inline code, code blocks, or any other Markdown features. If unsure, output plain text. Escape underscores in identifiers (e.g., new\\_york) instead of using backticks.",
-	)
-	applyTelegramGroupRuntimePromptRules(&promptSpec, job.ChatType, job.MentionUsers)
-	promptSpec.Rules = append(promptSpec.Rules,
-		"If you need to send a Telegram voice message: call telegram_send_voice. If you do not already have a voice file path, do NOT ask the user for one; instead call telegram_send_voice without path and provide a short `text` to synthesize from the current context.",
-	)
-	promptSpec.Rules = append(promptSpec.Rules,
-		"If a lightweight emoji reaction is sufficient, call telegram_react and do NOT send an extra text reply.",
-	)
+	applyTelegramRuntimePromptBlocks(&promptSpec, job.ChatType, job.MentionUsers)
 
 	var memManager *memory.Manager
 	var memIdentity memory.Identity
@@ -1685,39 +1671,6 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	return final, agentCtx, loadedSkills, reaction, nil
 }
 
-func applyTelegramGroupRuntimePromptRules(spec *agent.PromptSpec, chatType string, mentionUsers []string) {
-	if spec == nil || !isGroupChat(chatType) {
-		return
-	}
-	if len(mentionUsers) > 0 {
-		spec.Blocks = append(spec.Blocks, agent.PromptBlock{
-			Title:   "[Group Usernames]",
-			Content: strings.Join(mentionUsers, "\n"),
-		})
-	}
-
-	notes := []string{
-		"- Participate, but do not dominate the group thread.",
-		"- Be concise, be natural, do not over-explain.",
-		"- Send text only when it adds clear incremental value beyond prior context.",
-		"- If no incremental value, prefer lightweight acknowledgement instead of text.",
-		"- Avoid triple-tap: never split one thought across multiple short follow-up messages.",
-		"- Use `@username` to mention someone if you can find their username from the message history or [Group Usernames]. " +
-			"For example, [Nickname](tg:@username); don't invent username.",
-		"- Send text only when it adds clear incremental value; otherwise prefer a lightweight acknowledgement, send a reaction by using `telegram_react`",
-		"- Never send multiple fragmented follow-up messages for one incoming group message; combine into one concise reply (anti triple-tap).",
-	}
-
-	spec.Blocks = append(spec.Blocks, agent.PromptBlock{
-		Title:   "Group Reply Policy",
-		Content: strings.Join(notes, "\n"),
-	})
-	spec.Rules = append(spec.Rules,
-		"Prefer telegram_react when a lightweight acknowledgement is enough, and avoid sending extra text.",
-		"Never send multiple fragmented follow-up messages for one incoming group message; combine into one concise reply (anti triple-tap).",
-	)
-}
-
 func runMAEPTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, sharedGuard *guard.Guard, cfg agent.Config, model string, peerID string, history []llm.Message, stickySkills []string, task string) (*agent.Final, *agent.Context, []string, error) {
 	if strings.TrimSpace(task) == "" {
 		return nil, nil, nil, fmt.Errorf("empty maep task")
@@ -1736,8 +1689,7 @@ func runMAEPTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOpti
 	}
 	promptprofile.ApplyPersonaIdentity(&promptSpec, logger)
 	promptprofile.AppendLocalToolNotesBlock(&promptSpec, logger)
-	applyChatPersonaRules(&promptSpec)
-	// applyMAEPReplyPromptRules(&promptSpec)
+	applyMAEPReplyPromptRules(&promptSpec)
 
 	engine := agent.New(
 		client,
@@ -1775,31 +1727,6 @@ func buildMAEPRegistry(baseReg *tools.Registry) *tools.Registry {
 		reg.Register(t)
 	}
 	return reg
-}
-
-func applyMAEPReplyPromptRules(spec *agent.PromptSpec) {
-	if spec == nil {
-		return
-	}
-	spec.Rules = append(spec.Rules,
-		"Your final.output will be sent verbatim to a remote peer as a chat message.",
-		"Reply conversationally and naturally. Do NOT include protocol metadata or operational logs.",
-		"Never mention topics/protocol labels (e.g. dm.reply.v1, dm.checkin.v1, share.proactive.v1, chat.message), session_id, message_id, peer_id, contact_id, idempotency_key, or tool invocation details.",
-		"Do not report send/retry status, failure causes, or remediation steps unless the peer explicitly asks for diagnostic details.",
-	)
-}
-
-func applyChatPersonaRules(spec *agent.PromptSpec) {
-	if spec == nil {
-		return
-	}
-	spec.Rules = append(spec.Rules,
-		"Chat like a real person, not a customer-support assistant.",
-		"Do not output intent summaries, execution logs, protocol labels, or process reports unless the user explicitly asks for them.",
-		"Default to concise conversational replies (normally 1-4 sentences) unless the user asks for detailed structure.",
-		"Use first-person natural wording and follow the persona in IDENTITY.md and SOUL.md.",
-		"Avoid corporate phrasing and checklist-style phrasing unless the user explicitly requests formal style.",
-	)
 }
 
 func generateTelegramPlanProgressMessage(ctx context.Context, client llm.Client, model string, task string, plan *agent.Plan, update agent.PlanStepUpdate, requestTimeout time.Duration) (string, error) {

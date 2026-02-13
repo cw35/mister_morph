@@ -11,12 +11,10 @@ This document tracks where prompts are defined, how they are composed at runtime
   - If local `TOOLS.md` (under `file_state_dir`) is non-empty, it is injected as `PromptBlock{Title: "Local Tool Notes"}`.
   - Injection is size-limited to 8192 bytes (fixed constant).
 - Runtime prompt blocks/rules are then appended:
-  - URL/task-specific rules (`agent/prompt_rules.go`)
-  - Registry-aware rules (`agent/prompt_rules.go`, e.g. `plan_create` rules only when tool exists)
-  - Intent block (`agent/engine.go` + `agent/intent.go`)
+  - Static rules in `agent/prompts/system.tmpl` (includes URL guidance)
+  - Registry-aware prompt blocks (`agent/prompt_rules.go`, e.g. `plan_create` guidance block only when tool exists)
   - Skills/auth-profile blocks (`internal/skillsutil/skillsutil.go`)
-  - Telegram runtime rules/blocks (`cmd/mistermorph/telegramcmd/command.go`)
-- For URL augmentation, duplicate rule strings are deduplicated by `appendRule(...)`.
+  - Telegram runtime prompt blocks (`cmd/mistermorph/telegramcmd/prompt_blocks.go`)
 - `BuildSystemPrompt(...)` also checks registry capabilities for response-format sections (plan format appears only with `plan_create`).
 
 ## Main Agent Prompt
@@ -29,7 +27,7 @@ This document tracks where prompts are defined, how they are composed at runtime
   - `agent/prompt_template.go`
   - `internal/prompttmpl/prompttmpl.go`
 - Definitions:
-  - `DefaultPromptSpec()`: base `Identity` and `Rules`
+  - `DefaultPromptSpec()`: base `Identity`
   - `BuildSystemPrompt(...)`: renders identity, blocks, available tools, response schema, and rules (template-driven, with legacy fallback)
 
 ### 2) Persona identity injection
@@ -46,45 +44,32 @@ This document tracks where prompts are defined, how they are composed at runtime
   - When non-empty, appends `PromptBlock{Title: "Local Tool Notes"}`
   - Content is truncated by configured byte limit before injection
 
-### 3) Task-based dynamic rules (URL-aware)
+### 3) Static Rules + Registry Blocks
 
 - File: `agent/prompt_rules.go`
 - Definition:
-  - `augmentPromptSpecForTask(...)` appends URL-specific rules (prefer `url_fetch`, batch fetch, prefer `download_path`, no fabrication on fetch errors)
-  - `augmentPromptSpecForRegistry(...)` appends registry-aware rules (for example `plan_create` guidance only when the tool is registered)
+  - URL/tool safety guidance is now static in `agent/prompts/system.tmpl`
+  - `augmentPromptSpecForRegistry(...)` appends registry-aware blocks (for example `plan_create` guidance block only when the tool is registered)
 
-### 4) Intent-derived context
-
-- Files:
-  - `agent/intent.go`
-  - `agent/engine.go`
-- Definitions:
-  - `IntentBlock(...)` injects inferred intent into prompt blocks
-  - `IntentSystemMessage(...)` is used when a custom prompt builder is active
-
-### 5) Skills/auth-profile blocks
+### 4) Skills/auth-profile blocks
 
 - File: `internal/skillsutil/skillsutil.go`
 - Definition:
   - `PromptSpecWithSkills(...)` appends loaded skill content and auth-profile guidance
 
-### 6) Telegram runtime prompt mutations
+### 5) Telegram runtime prompt mutations
 
-- File: `cmd/mistermorph/telegramcmd/command.go`
+- File: `cmd/mistermorph/telegramcmd/prompt_blocks.go`
 - Definition:
-  - Appends Telegram-specific rules (MarkdownV2 style limits, mention behavior, voice/reaction guidance, optional memory/group blocks)
-  - In group chats, injects fixed `humanlike` policy rules:
-    - text only when there is incremental value
-    - prefer reaction for lightweight acknowledgement
-    - avoid fragmented multi-message "triple-tap" replies
+  - Injects Telegram-specific prompt blocks (chat persona, markdown/runtime guidance, optional group policy and usernames block)
 
-### 7) Heartbeat task prompt template
+### 6) Heartbeat task prompt template
 
 - File: `internal/heartbeatutil/heartbeat.go`
 - Definition:
   - `BuildHeartbeatTask(...)` builds the heartbeat task body (checklist + action expectations)
 
-### 8) Runtime control prompts
+### 7) Runtime control prompts
 
 - Files:
   - `agent/engine_loop.go`
@@ -92,7 +77,7 @@ This document tracks where prompts are defined, how they are composed at runtime
 - Definition:
   - Dynamic system/user control instructions during execution (parse-retry guidance, plan transition guidance, repeated-tool guardrails, forced completion guidance)
 
-### 9) Prompt-builder override hook
+### 8) Prompt-builder override hook
 
 - File: `agent/engine.go`
 - Definition:
@@ -107,8 +92,6 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 | Template | Role | Purpose |
 |---|---|---|
 | `agent/prompts/system.tmpl` | system | Renders the main system prompt (Identity, Blocks, Tools, response format, Rules). |
-| `agent/prompts/intent_system.tmpl` | system | Constrains intent inference output schema (JSON contract). |
-| `agent/prompts/intent_user.tmpl` | user | Carries `task/history` plus built-in intent inference rules. |
 | `telegramcmd/prompts/init_questions_system.tmpl` | system | Defines output contract for Telegram persona-bootstrap question generation. |
 | `telegramcmd/prompts/init_questions_user.tmpl` | user | Carries draft identity/soul context, user text, and required target fields for init question generation. |
 | `telegramcmd/prompts/init_fill_system.tmpl` | system | Defines output contract for Telegram persona field filling. |
@@ -118,7 +101,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 | `telegramcmd/prompts/plan_progress_system.tmpl` | system | Defines style/constraints for Telegram plan-progress rewrite messages. |
 | `telegramcmd/prompts/plan_progress_user.tmpl` | user | Carries plan progress payload (task, completed/next step, progress stats) for rewrite. |
 | `telegramcmd/prompts/memory_draft_system.tmpl` | system | Defines the output contract for single-session memory draft generation. |
-| `telegramcmd/prompts/memory_draft_user.tmpl` | user | Carries session context, dialogue snippets, existing tasks/follow-ups, and summarization rules. |
+| `telegramcmd/prompts/memory_draft_user.tmpl` | user | Carries session context, `chat_history`, `current_task`, `current_output`, and existing summary items. |
 | `telegramcmd/prompts/memory_merge_system.tmpl` | system | Defines the output contract for same-day short-term memory merge. |
 | `telegramcmd/prompts/memory_merge_user.tmpl` | user | Carries existing/incoming memory content and merge rules. |
 | `telegramcmd/prompts/memory_task_match_system.tmpl` | system | Defines the output contract for task mapping (`update_index/match_index`). |
@@ -129,22 +112,8 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 | `telegramcmd/prompts/maep_feedback_user.tmpl` | user | Carries recent turns, inbound text, allowed actions, and signal bounds for MAEP feedback classification. |
 | `telegramcmd/prompts/telegram_addressing_system.tmpl` | system | Defines the output contract for Telegram addressing classification. |
 | `telegramcmd/prompts/telegram_addressing_user.tmpl` | user | Carries bot username, aliases, and incoming message for addressing classification. |
-| `telegramcmd/prompts/reaction_category_system.tmpl` | system | Defines the output contract for reaction category classification. |
-| `telegramcmd/prompts/reaction_category_user.tmpl` | user | Carries intent/task payload, category candidates, and rules for reaction category classification. |
 
-### 1) Intent inference
-
-- File/Function: `agent/intent.go` / `InferIntent(...)`
-- Templates:
-  - `agent/prompts/intent_system.tmpl`
-  - `agent/prompts/intent_user.tmpl`
-  - Renderer: `agent/intent_template.go` (via `internal/prompttmpl`)
-- Purpose: infer structured user intent and ambiguity level
-- Primary input: current `task`, trimmed recent `history` (rules are embedded in the template)
-- Output: `Intent{goal, deliverable, constraints, ambiguities, ask}`
-- JSON required: **Yes** (`ForceJSON=true`)
-
-### 2) Plan generation tool
+### 1) Plan generation tool
 
 - File/Function: `tools/builtin/plan_create.go` / `Execute(...)`
 - Purpose: generate a structured execution plan
@@ -152,7 +121,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: tool observation JSON string containing `plan`
 - JSON required: **Yes** (`ForceJSON=true`)
 
-### 3) Skill router selection
+### 2) Skill router selection
 
 - File/Function: `skills/select.go` / `Select(...)`
 - Purpose: select a bounded skill subset for loading
@@ -160,7 +129,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: `Selection{skills_to_load, reasoning}`
 - JSON required: **Yes** (`ForceJSON=true`)
 
-### 4) Remote SKILL.md security review
+### 3) Remote SKILL.md security review
 
 - File/Function: `cmd/mistermorph/skillscmd/skills_install_builtin.go` / `reviewRemoteSkill(...)`
 - Purpose: extract safe download directives from untrusted remote `SKILL.md`
@@ -168,7 +137,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: `remoteSkillReview{skill_name, skill_dir, files[], risks[]}`
 - JSON required: **Yes** (`ForceJSON=true`)
 
-### 5) Contacts candidate-feature extraction
+### 4) Contacts candidate-feature extraction
 
 - File/Function: `contacts/llm_features.go` / `EvaluateCandidateFeatures(...)`
 - Purpose: score semantic overlap and explicit history linkage for share candidates
@@ -176,7 +145,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: map of `item_id -> CandidateFeature`
 - JSON required: **Yes** (`ForceJSON=true`)
 
-### 6) Contacts preference-feature extraction
+### 5) Contacts preference-feature extraction
 
 - File/Function: `contacts/llm_features.go` / `EvaluateContactPreferences(...)`
 - Purpose: infer stable topic affinities and persona traits
@@ -184,7 +153,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: `PreferenceFeatures{topic_affinity, persona_brief, persona_traits, confidence}`
 - JSON required: **Yes** (`ForceJSON=true`)
 
-### 7) Contacts nickname suggestion
+### 6) Contacts nickname suggestion
 
 - File/Function: `contacts/llm_nickname.go` / `SuggestNickname(...)`
 - Purpose: suggest a short stable nickname
@@ -192,7 +161,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: `{nickname, confidence, reason}` (then normalized to return values)
 - JSON required: **Yes** (`ForceJSON=true`)
 
-### 8) Telegram init question generation
+### 7) Telegram init question generation
 
 - File/Function: `cmd/mistermorph/telegramcmd/init_flow.go` / `buildInitQuestions(...)`
 - Templates:
@@ -204,7 +173,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: `{"questions": [...], "message": "..."}` (message is sent directly; fallback text is used when empty)
 - JSON required: **Yes** (`ForceJSON=true`)
 
-### 9) Telegram init field filling
+### 8) Telegram init field filling
 
 - File/Function: `cmd/mistermorph/telegramcmd/init_flow.go` / `buildInitFill(...)`
 - Templates:
@@ -216,7 +185,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: `initFillOutput` (identity + soul field values)
 - JSON required: **Yes** (`ForceJSON=true`)
 
-### 10) Telegram post-init greeting generation
+### 9) Telegram post-init greeting generation
 
 - File/Function: `cmd/mistermorph/telegramcmd/init_flow.go` / `generatePostInitGreeting(...)`
 - Templates:
@@ -228,7 +197,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: plain text message
 - JSON required: **No** (`ForceJSON=false`)
 
-### 11) Telegram memory draft generation
+### 10) Telegram memory draft generation
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `BuildMemoryDraft(...)`
 - Templates:
@@ -236,11 +205,11 @@ These are prompts sent through separate `llm.Request` calls outside the main too
   - `cmd/mistermorph/telegramcmd/prompts/memory_draft_user.tmpl`
   - Renderer: `cmd/mistermorph/telegramcmd/memory_prompts.go`
 - Purpose: convert one session into structured short-term memory draft
-- Primary input: session context, conversation, existing tasks/follow-ups
+- Primary input: session context, `chat_history`, current task/output, existing summary items
 - Output: `memory.SessionDraft`
 - JSON required: **Yes** (`ForceJSON=true`)
 
-### 12) Telegram semantic merge for short-term memory
+### 11) Telegram semantic merge for short-term memory
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `SemanticMergeShortTerm(...)`
 - Templates:
@@ -252,7 +221,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: merged `memory.ShortTermContent` + summary string
 - JSON required: **Yes** (`ForceJSON=true`)
 
-### 13) Telegram semantic task matching
+### 12) Telegram semantic task matching
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `semanticMatchTasks(...)`
 - Templates:
@@ -264,7 +233,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: `[]taskMatch{update_index, match_index}`
 - JSON required: **Yes** (`ForceJSON=true`)
 
-### 14) Telegram semantic task deduplication
+### 13) Telegram semantic task deduplication
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `semanticDedupTaskItems(...)`
 - Templates:
@@ -276,7 +245,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: deduplicated `[]memory.TaskItem`
 - JSON required: **Yes** (`ForceJSON=true`)
 
-### 15) Telegram plan-progress message rewriting
+### 14) Telegram plan-progress message rewriting
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `generateTelegramPlanProgressMessage(...)`
 - Templates:
@@ -288,7 +257,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: plain text message
 - JSON required: **No** (`ForceJSON=false`)
 
-### 16) MAEP feedback classifier
+### 15) MAEP feedback classifier
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `classifyMAEPFeedback(...)`
 - Templates:
@@ -300,7 +269,7 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: `maepFeedbackClassification{signal_positive, signal_negative, signal_bored, next_action, confidence}`
 - JSON required: **Yes** (`ForceJSON=true`)
 
-### 17) Telegram addressing classifier
+### 16) Telegram addressing classifier
 
 - File/Function: `cmd/mistermorph/telegramcmd/command.go` / `addressingDecisionViaLLM(...)`
 - Templates:
@@ -312,23 +281,11 @@ These are prompts sent through separate `llm.Request` calls outside the main too
 - Output: `telegramAddressingLLMDecision{addressed, confidence, impulse, reason}`
 - JSON required: **Yes** (`ForceJSON=true`)
 
-### 18) Telegram reaction-category classifier
-
-- File/Function: `cmd/mistermorph/telegramcmd/reactions.go` / `classifyReactionCategoryViaIntent(...)`
-- Templates:
-  - `cmd/mistermorph/telegramcmd/prompts/reaction_category_system.tmpl`
-  - `cmd/mistermorph/telegramcmd/prompts/reaction_category_user.tmpl`
-  - Renderer: `cmd/mistermorph/telegramcmd/reaction_prompts.go`
-- Purpose: choose lightweight emoji-reaction category from inferred intent/task
-- Primary input: inferred intent fields, task text, allowed categories
-- Output: normalized `reactionMatch{Category, Source}`
-- JSON required: **Yes** (`ForceJSON=true`)
-
 ## `mister_morph_meta`
 
 ### Purpose
 
-`mister_morph_meta` is run-context metadata for the model, not user intent text.
+`mister_morph_meta` is run-context metadata for the model, not user instruction text.
 
 It is used to:
 - carry trigger/channel/runtime context (for example heartbeat vs telegram chat)

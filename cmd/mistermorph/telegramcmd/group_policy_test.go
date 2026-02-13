@@ -148,21 +148,24 @@ func TestGroupTriggerDecision_SmartMentionRoutesThroughAddressingLLM(t *testing.
 
 func TestApplyTelegramGroupRuntimePromptRules_GroupOnly(t *testing.T) {
 	groupSpec := agent.PromptSpec{}
-	applyTelegramGroupRuntimePromptRules(&groupSpec, "group", []string{"@alice"})
-	if !hasPromptBlockTitle(groupSpec.Blocks, "Group Reply Policy") {
-		t.Fatalf("group chat should include Group Reply Policy block")
+	applyTelegramRuntimePromptBlocks(&groupSpec, "group", []string{"@alice"})
+	if !hasPromptBlockTitle(groupSpec.Blocks, "Telegram Runtime Rules") {
+		t.Fatalf("group chat should include telegram runtime rules block")
 	}
-	if !hasRuleContaining(groupSpec.Rules, "anti triple-tap") {
-		t.Fatalf("group chat should include anti triple-tap rule")
+	if !hasBlockContaining(groupSpec.Blocks, "Telegram Runtime Rules", "anti triple-tap") {
+		t.Fatalf("group chat should include anti triple-tap guidance")
 	}
-	if !hasRuleContaining(groupSpec.Rules, "prefer telegram_react") {
-		t.Fatalf("group chat should include reaction preference rule")
+	if !hasBlockContaining(groupSpec.Blocks, "Telegram Runtime Rules", "call `telegram_react` tool instead of text") {
+		t.Fatalf("group chat should include reaction preference guidance")
 	}
 
 	privateSpec := agent.PromptSpec{}
-	applyTelegramGroupRuntimePromptRules(&privateSpec, "private", []string{"@alice"})
-	if len(privateSpec.Blocks) != 0 || len(privateSpec.Rules) != 0 {
-		t.Fatalf("non-group chat must not inject group policy rules")
+	applyTelegramRuntimePromptBlocks(&privateSpec, "private", []string{"@alice"})
+	if !hasPromptBlockTitle(privateSpec.Blocks, "Telegram Runtime Rules") {
+		t.Fatalf("private chat should include telegram runtime rules block")
+	}
+	if hasBlockContaining(privateSpec.Blocks, "Telegram Runtime Rules", "anti triple-tap") {
+		t.Fatalf("non-group chat must not include group-only guidance")
 	}
 }
 
@@ -175,10 +178,14 @@ func hasPromptBlockTitle(blocks []agent.PromptBlock, want string) bool {
 	return false
 }
 
-func hasRuleContaining(rules []string, snippet string) bool {
+func hasBlockContaining(blocks []agent.PromptBlock, title string, snippet string) bool {
+	title = strings.TrimSpace(title)
 	snippet = strings.ToLower(strings.TrimSpace(snippet))
-	for _, rule := range rules {
-		if strings.Contains(strings.ToLower(rule), snippet) {
+	for _, block := range blocks {
+		if !strings.EqualFold(strings.TrimSpace(block.Title), title) {
+			continue
+		}
+		if strings.Contains(strings.ToLower(block.Content), snippet) {
 			return true
 		}
 	}

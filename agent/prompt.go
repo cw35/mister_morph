@@ -28,7 +28,6 @@ type PromptSkill struct {
 func DefaultPromptSpec() PromptSpec {
 	return PromptSpec{
 		Identity: "You are MisterMorph, a general-purpose AI agent that can use tools to complete tasks.",
-		Rules:    defaultSystemRules(),
 	}
 }
 
