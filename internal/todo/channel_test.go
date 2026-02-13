@@ -34,26 +34,6 @@ open_count: 1
 	}
 }
 
-func TestParseWIPEntryRejectsLegacyChannelPrefix(t *testing.T) {
-	raw := `---
-created_at: "1970-01-01T00:00:00Z"
-updated_at: "1970-01-01T00:00:00Z"
-open_count: 1
----
-
-# TODO Work In Progress (WIP)
-
-- [ ] CreatedAt: 2026-02-11 09:30 - Channel: tg:-1001981343441 - 2026-02-11 10:00 Remind [John](tg:@johnwick) to submit report.
-`
-	file, err := ParseWIP(raw)
-	if err != nil {
-		t.Fatalf("ParseWIP() error = %v", err)
-	}
-	if len(file.Entries) != 0 {
-		t.Fatalf("entries mismatch: got %d want 0", len(file.Entries))
-	}
-}
-
 func TestRenderWIPEntryWithChatID(t *testing.T) {
 	file := WIPFile{
 		CreatedAt: "1970-01-01T00:00:00Z",

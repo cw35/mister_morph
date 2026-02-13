@@ -676,11 +676,7 @@ func newTelegramCmd() *cobra.Command {
 								stickySkillsByChat[chatID] = nil
 							}
 							if w.Version == curVersion && len(loadedSkills) > 0 {
-								capN := viper.GetInt("skills.max_load")
-								if capN <= 0 {
-									capN = 3
-								}
-								stickySkillsByChat[chatID] = capUniqueStrings(loadedSkills, capN)
+								stickySkillsByChat[chatID] = capUniqueStrings(loadedSkills, telegramStickySkillsCap)
 							}
 							cur := history[chatID]
 							if job.IsHeartbeat {
@@ -1012,11 +1008,7 @@ func newTelegramCmd() *cobra.Command {
 								maepSessions[sessionKey] = sessionState
 								maepSessionDirty = true
 								if len(loadedSkills) > 0 {
-									capN := viper.GetInt("skills.max_load")
-									if capN <= 0 {
-										capN = 3
-									}
-									maepStickySkills[peerID] = capUniqueStrings(loadedSkills, capN)
+									maepStickySkills[peerID] = capUniqueStrings(loadedSkills, telegramStickySkillsCap)
 								}
 								cur := maepHistory[peerID]
 								cur = append(cur,
@@ -3870,6 +3862,7 @@ func lookupMAEPBusinessContact(ctx context.Context, maepSvc *maep.Service, conta
 const (
 	telegramHistoryCapTalkative = 16
 	telegramHistoryCapDefault   = 8
+	telegramStickySkillsCap     = 3
 )
 
 func telegramHistoryCapForMode(mode string) int {

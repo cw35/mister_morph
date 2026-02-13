@@ -43,16 +43,6 @@ type auditFile struct {
 	Records []AuditEvent `json:"records"`
 }
 
-type inboxFileLegacy struct {
-	Version int            `json:"version"`
-	Records []InboxMessage `json:"records"`
-}
-
-type outboxFileLegacy struct {
-	Version int             `json:"version"`
-	Records []OutboxMessage `json:"records"`
-}
-
 type protocolHistoryFile struct {
 	Version int               `json:"version"`
 	Records []ProtocolHistory `json:"records"`
@@ -264,9 +254,6 @@ func (s *FileStore) AppendInboxMessage(ctx context.Context, message InboxMessage
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.withStateLock(ctx, func() error {
-		if err := s.migrateLegacyInboxIfPresentLocked(); err != nil {
-			return err
-		}
 		message.MessageID = strings.TrimSpace(message.MessageID)
 		message.FromPeerID = strings.TrimSpace(message.FromPeerID)
 		message.Topic = strings.TrimSpace(message.Topic)
@@ -328,9 +315,6 @@ func (s *FileStore) AppendOutboxMessage(ctx context.Context, message OutboxMessa
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.withStateLock(ctx, func() error {
-		if err := s.migrateLegacyOutboxIfPresentLocked(); err != nil {
-			return err
-		}
 		message.MessageID = strings.TrimSpace(message.MessageID)
 		message.ToPeerID = strings.TrimSpace(message.ToPeerID)
 		message.Topic = strings.TrimSpace(message.Topic)
@@ -664,9 +648,6 @@ func (s *FileStore) saveDedupeRecordsLocked(records []DedupeRecord) error {
 }
 
 func (s *FileStore) loadInboxMessagesLocked() ([]InboxMessage, error) {
-	if err := s.migrateLegacyInboxIfPresentLocked(); err != nil {
-		return nil, err
-	}
 	records, ok, err := s.readInboxMessagesJSONL(s.inboxPathJSONL())
 	if err != nil {
 		return nil, err
@@ -694,9 +675,6 @@ func (s *FileStore) appendInboxMessageLocked(message InboxMessage) error {
 }
 
 func (s *FileStore) loadOutboxMessagesLocked() ([]OutboxMessage, error) {
-	if err := s.migrateLegacyOutboxIfPresentLocked(); err != nil {
-		return nil, err
-	}
 	records, ok, err := s.readOutboxMessagesJSONL(s.outboxPathJSONL())
 	if err != nil {
 		return nil, err
@@ -911,102 +889,6 @@ func (s *FileStore) migrateLegacyAuditEventsLocked(records []AuditEvent) error {
 	}
 }
 
-func (s *FileStore) migrateLegacyInboxMessagesLocked(records []InboxMessage) error {
-	if len(records) > 0 {
-		writer, err := fsstore.NewJSONLWriter(s.inboxPathJSONL(), fsstore.JSONLOptions{
-			DirPerm:        0o700,
-			FilePerm:       0o600,
-			FlushEachWrite: true,
-		})
-		if err != nil {
-			return fmt.Errorf("open inbox migration writer: %w", err)
-		}
-		for _, record := range records {
-			if err := writer.AppendJSON(record); err != nil {
-				_ = writer.Close()
-				return fmt.Errorf("append migrated inbox message: %w", err)
-			}
-		}
-		if err := writer.Close(); err != nil {
-			return fmt.Errorf("close inbox migration writer: %w", err)
-		}
-	}
-	return renameLegacyDataFile(s.inboxPathLegacy())
-}
-
-func (s *FileStore) migrateLegacyInboxIfPresentLocked() error {
-	var legacy inboxFileLegacy
-	ok, err := s.readJSONFile(s.inboxPathLegacy(), &legacy)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return nil
-	}
-	records := make([]InboxMessage, 0, len(legacy.Records))
-	for _, record := range legacy.Records {
-		records = append(records, record)
-	}
-	return s.migrateLegacyInboxMessagesLocked(records)
-}
-
-func (s *FileStore) migrateLegacyOutboxMessagesLocked(records []OutboxMessage) error {
-	if len(records) > 0 {
-		writer, err := fsstore.NewJSONLWriter(s.outboxPathJSONL(), fsstore.JSONLOptions{
-			DirPerm:        0o700,
-			FilePerm:       0o600,
-			FlushEachWrite: true,
-		})
-		if err != nil {
-			return fmt.Errorf("open outbox migration writer: %w", err)
-		}
-		for _, record := range records {
-			if err := writer.AppendJSON(record); err != nil {
-				_ = writer.Close()
-				return fmt.Errorf("append migrated outbox message: %w", err)
-			}
-		}
-		if err := writer.Close(); err != nil {
-			return fmt.Errorf("close outbox migration writer: %w", err)
-		}
-	}
-	return renameLegacyDataFile(s.outboxPathLegacy())
-}
-
-func (s *FileStore) migrateLegacyOutboxIfPresentLocked() error {
-	var legacy outboxFileLegacy
-	ok, err := s.readJSONFile(s.outboxPathLegacy(), &legacy)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return nil
-	}
-	records := make([]OutboxMessage, 0, len(legacy.Records))
-	for _, record := range legacy.Records {
-		records = append(records, record)
-	}
-	return s.migrateLegacyOutboxMessagesLocked(records)
-}
-
-func renameLegacyDataFile(path string) error {
-	base := path + ".migrated." + time.Now().UTC().Format("20060102T150405Z")
-	target := base
-	for i := 1; ; i++ {
-		if err := os.Rename(path, target); err == nil {
-			return nil
-		} else if os.IsNotExist(err) {
-			return nil
-		} else {
-			if _, statErr := os.Stat(target); statErr == nil {
-				target = fmt.Sprintf("%s.%d", base, i)
-				continue
-			}
-			return fmt.Errorf("rename legacy file %s: %w", path, err)
-		}
-	}
-}
-
 func (s *FileStore) ensureNotCanceled(ctx context.Context) error {
 	if ctx == nil {
 		return nil
@@ -1071,16 +953,8 @@ func (s *FileStore) inboxPathJSONL() string {
 	return filepath.Join(s.rootPath(), "inbox_messages.jsonl")
 }
 
-func (s *FileStore) inboxPathLegacy() string {
-	return filepath.Join(s.rootPath(), "inbox_messages.json")
-}
-
 func (s *FileStore) outboxPathJSONL() string {
 	return filepath.Join(s.rootPath(), "outbox_messages.jsonl")
-}
-
-func (s *FileStore) outboxPathLegacy() string {
-	return filepath.Join(s.rootPath(), "outbox_messages.json")
 }
 
 func (s *FileStore) protocolHistoryPath() string {

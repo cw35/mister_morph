@@ -246,8 +246,6 @@ skills:
   auto: true
   # Skills to always load (by skill name or id).
   load: ["*"] # e.g. ["skill-creator", "my-skill-id"]
-  # Legacy smart-mode option (currently ignored).
-  max_load: 3
 
 # Daemon mode (local HTTP server).
 server:

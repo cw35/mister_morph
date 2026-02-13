@@ -31,7 +31,6 @@ func initViperDefaults() {
 
 	// Skills
 	viper.SetDefault("skills.mode", "on")
-	viper.SetDefault("skills.max_load", 3)
 	viper.SetDefault("skills.dir_name", "skills")
 
 	// MAEP

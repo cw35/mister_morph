@@ -234,7 +234,6 @@ These arguments will dump the final system/user/tool prompts and the full LLM re
 - `--skill` (repeatable)
 - `--skills-auto`
 - `--skills-mode` (`off|on`)
-- `--skills-max-load`
 - `--max-steps`
 - `--parse-retries`
 - `--max-token-budget`

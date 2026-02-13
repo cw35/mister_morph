@@ -86,10 +86,6 @@ Implementation notes:
 - Directory permission `0700`, file permission `0600`.
 - JSON files are written via atomic replacement.
 - JSONL files are append-oriented.
-- Legacy migration is built in for:
-  - `audit_events.json -> audit_events.jsonl`
-  - `inbox_messages.json -> inbox_messages.jsonl`
-  - `outbox_messages.json -> outbox_messages.jsonl`
 
 ## 5) Runtime Integration (MAEP + Bus)
 

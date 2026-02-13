@@ -21,7 +21,6 @@ type SkillsConfig struct {
 	Mode      string
 	Requested []string
 	Auto      bool
-	MaxLoad   int
 	Trace     bool
 }
 
@@ -34,8 +33,7 @@ func SkillsConfigFromViper() SkillsConfig {
 			append([]string{}, viper.GetStringSlice("skill")...), // legacy
 			viper.GetStringSlice("skills")...,                    // legacy
 		),
-		MaxLoad: viper.GetInt("skills.max_load"),
-		Trace:   strings.EqualFold(strings.TrimSpace(viper.GetString("logging.level")), "debug"),
+		Trace: strings.EqualFold(strings.TrimSpace(viper.GetString("logging.level")), "debug"),
 	}
 	cfg.Requested = append(cfg.Requested, getStringSlice("skills.load")...)
 	if strings.TrimSpace(cfg.Mode) == "" {
@@ -59,8 +57,6 @@ func SkillsConfigFromRunCmd(cmd *cobra.Command) SkillsConfig {
 	if cmd.Flags().Changed("skill") {
 		cfg.Requested, _ = cmd.Flags().GetStringArray("skill")
 	}
-
-	cfg.MaxLoad = configutil.FlagOrViperInt(cmd, "skills-max-load", "skills.max_load")
 
 	if strings.TrimSpace(cfg.Mode) == "" {
 		cfg.Mode = "on"

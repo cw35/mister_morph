@@ -78,14 +78,6 @@ type planCreateOutput struct {
 	Plan planCreatePlan `json:"plan"`
 }
 
-type planCreateLegacy struct {
-	Thought   string          `json:"thought"`
-	Summary   string          `json:"summary"`
-	Steps     agent.PlanSteps `json:"steps"`
-	Risks     []string        `json:"risks"`
-	Questions []string        `json:"questions"`
-}
-
 func (t *planCreateTool) Execute(ctx context.Context, params map[string]any) (string, error) {
 	if t == nil || t.client == nil {
 		return "", fmt.Errorf("plan_create unavailable (missing llm client)")
@@ -179,17 +171,6 @@ Rules:
 	var out planCreateOutput
 	if err := jsonutil.DecodeWithFallback(res.Text, &out); err != nil {
 		return "", fmt.Errorf("invalid plan_create response")
-	}
-
-	if strings.TrimSpace(out.Plan.Summary) == "" && len(out.Plan.Steps) == 0 {
-		var legacy planCreateLegacy
-		if err := jsonutil.DecodeWithFallback(res.Text, &legacy); err == nil {
-			out.Plan.Thought = legacy.Thought
-			out.Plan.Summary = legacy.Summary
-			out.Plan.Steps = legacy.Steps
-			out.Plan.Risks = legacy.Risks
-			out.Plan.Questions = legacy.Questions
-		}
 	}
 
 	out.Plan.Thought = strings.TrimSpace(out.Plan.Thought)

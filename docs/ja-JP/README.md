@@ -240,7 +240,6 @@ mistermorph run --inspect-prompt --inspect-request --task "..."
 - `--skill`（繰り返し指定可）
 - `--skills-auto`
 - `--skills-mode`（`off|on`）
-- `--skills-max-load`
 - `--max-steps`
 - `--parse-retries`
 - `--max-token-budget`

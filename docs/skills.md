@@ -29,10 +29,6 @@ Skill loading is controlled by `skills.mode`:
 - `off`: never load skills
 - `on`: only load skills requested by config/flags and (optionally) `$SkillName` references
 
-Legacy compatibility:
-
-- `explicit` and `smart` are accepted but treated as `on`.
-
 ### On mode
 
 You can request skills via config:
@@ -40,8 +36,6 @@ You can request skills via config:
 - `skills.load: ["some-skill-id", "some-skill-name"]`
 
 If `skills.auto=true`, the agent also loads skills referenced inside your task text as `$SkillName` (e.g. “Use $google-maps-parse to extract coordinates.”).
-
-Smart selector flow is currently disabled. Legacy smart-mode config key (`skills.max_load`) is accepted for compatibility but ignored.
 
 ## Installing / updating built-in skills
 

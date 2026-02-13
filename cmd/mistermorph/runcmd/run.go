@@ -271,7 +271,6 @@ func New(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringArray("skill", nil, "Skill(s) to load by name or id (repeatable).")
 	cmd.Flags().Bool("skills-auto", true, "Auto-load skills referenced in task via $SkillName.")
 	cmd.Flags().String("skills-mode", "on", "Skills mode: off|on. Legacy values explicit/smart map to on.")
-	cmd.Flags().Int("skills-max-load", 3, "Legacy smart-mode option (currently ignored).")
 
 	cmd.Flags().Int("max-steps", 15, "Max tool-call steps.")
 	cmd.Flags().Int("parse-retries", 2, "Max JSON parse retries.")

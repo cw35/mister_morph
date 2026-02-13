@@ -135,27 +135,6 @@ func TestResolveTelegramTargetWithChatIDNoPrivateFallback(t *testing.T) {
 	}
 }
 
-func TestResolveTelegramTargetLegacyUsernameUnsupported(t *testing.T) {
-	contact := contacts.Contact{
-		ContactID: "tg:@alice",
-		Kind:      contacts.KindHuman,
-		Channel:   contacts.ChannelTelegram,
-	}
-	target, chatType, err := contactsruntime.ResolveTelegramTarget(contact)
-	if err == nil {
-		t.Fatalf("resolveTelegramTarget() expected error for tg:@ fallback")
-	}
-	if !strings.Contains(err.Error(), "telegram username target is not sendable") {
-		t.Fatalf("resolveTelegramTarget() error mismatch: got %q", err.Error())
-	}
-	if target != nil {
-		t.Fatalf("target mismatch: got=%T %v want nil", target, target)
-	}
-	if chatType != "" {
-		t.Fatalf("chatType mismatch: got %q want empty", chatType)
-	}
-}
-
 func TestIsPublicTelegramTarget(t *testing.T) {
 	if !contactsruntime.IsPublicTelegramTarget(int64(-100789), "supergroup") {
 		t.Fatalf("expected public target for group chat")
