@@ -2,6 +2,7 @@ package llminspect
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/quailyquaily/mistermorph/llm"
@@ -33,6 +35,33 @@ type PromptInspector struct {
 type modelSceneContextKey struct{}
 
 const defaultModelScene = "unknown"
+
+//go:embed tmpl/prompt.tmpl
+var promptInspectorTemplateSource string
+
+var promptInspectorTemplate = template.Must(template.New("prompt_inspector").Parse(promptInspectorTemplateSource))
+
+type promptInspectorHeaderView struct {
+	Mode     string
+	Task     string
+	Datetime string
+}
+
+type promptInspectorRequestView struct {
+	RequestNumber int
+	Scene         string
+	Messages      []promptInspectorMessageView
+}
+
+type promptInspectorMessageView struct {
+	Number        int
+	Role          string
+	HasToolCallID bool
+	ToolCallID    string
+	HasToolCalls  bool
+	ToolCalls     string
+	Content       string
+}
 
 func NewPromptInspector(opts Options) (*PromptInspector, error) {
 	startedAt := time.Now()
@@ -110,26 +139,36 @@ func (p *PromptInspector) DumpWithScene(scene string, messages []llm.Message) er
 		scene = defaultModelScene
 	}
 	p.requestCount++
-	var b strings.Builder
-	fmt.Fprintf(&b, "\n## Request #%d\n\n", p.requestCount)
-	fmt.Fprintf(&b, "model_scene: %s\n\n", scene)
+
+	view := promptInspectorRequestView{
+		RequestNumber: p.requestCount,
+		Scene:         scene,
+		Messages:      make([]promptInspectorMessageView, 0, len(messages)),
+	}
 	for i, msg := range messages {
-		fmt.Fprintf(&b, "### Message #%d-%d\n\n", p.requestCount, i+1)
-		b.WriteString("```\n")
-		fmt.Fprintf(&b, "role: %s\n\n", msg.Role)
-		if strings.TrimSpace(msg.ToolCallID) != "" {
-			fmt.Fprintf(&b, "tool_call_id: %s\n\n", msg.ToolCallID)
+		mv := promptInspectorMessageView{
+			Number:        i + 1,
+			Role:          msg.Role,
+			HasToolCallID: strings.TrimSpace(msg.ToolCallID) != "",
+			ToolCallID:    msg.ToolCallID,
+			Content:       msg.Content,
 		}
 		if len(msg.ToolCalls) > 0 {
 			toolCallsJSON, err := json.MarshalIndent(msg.ToolCalls, "", "  ")
 			if err != nil {
-				fmt.Fprintf(&b, "tool_calls: <error: %s>\n\n", err.Error())
+				mv.HasToolCalls = true
+				mv.ToolCalls = fmt.Sprintf("<error: %s>", err.Error())
 			} else {
-				fmt.Fprintf(&b, "tool_calls: %s\n\n", string(toolCallsJSON))
+				mv.HasToolCalls = true
+				mv.ToolCalls = string(toolCallsJSON)
 			}
 		}
-		fmt.Fprintf(&b, "content: %s\n", msg.Content)
-		b.WriteString("```\n\n")
+		view.Messages = append(view.Messages, mv)
+	}
+
+	var b strings.Builder
+	if err := promptInspectorTemplate.ExecuteTemplate(&b, "request", view); err != nil {
+		return fmt.Errorf("render prompt request dump: %w", err)
 	}
 
 	if _, err := p.file.WriteString(b.String()); err != nil {
@@ -139,13 +178,16 @@ func (p *PromptInspector) DumpWithScene(scene string, messages []llm.Message) er
 }
 
 func (p *PromptInspector) writeHeader() error {
-	header := fmt.Sprintf(
-		"---\nmode: %s\ntask: %s\ndatetime: %s\n---\n\n",
-		strconv.Quote(p.mode),
-		strconv.Quote(p.task),
-		strconv.Quote(p.startedAt.Format(time.RFC3339)),
-	)
-	if _, err := p.file.WriteString(header); err != nil {
+	view := promptInspectorHeaderView{
+		Mode:     strconv.Quote(p.mode),
+		Task:     strconv.Quote(p.task),
+		Datetime: strconv.Quote(p.startedAt.Format(time.RFC3339)),
+	}
+	var b strings.Builder
+	if err := promptInspectorTemplate.ExecuteTemplate(&b, "header", view); err != nil {
+		return fmt.Errorf("render prompt header dump: %w", err)
+	}
+	if _, err := p.file.WriteString(b.String()); err != nil {
 		return err
 	}
 	return p.file.Sync()
