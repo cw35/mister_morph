@@ -1194,7 +1194,7 @@ func newTelegramCmd() *cobra.Command {
 					switch normalizedCmd {
 					case "/start", "/help":
 						help := "Send a message and I will run it as an agent task.\n" +
-							"Commands: /ask <task>, /mem, /humanize, /reset, /id\n\n" +
+							"Commands: /ask <task>, /echo <msg>, /mem, /humanize, /reset, /id\n\n" +
 							"Group chats: use /ask <task>, reply to me, or mention @" + botUser + ".\n" +
 							"You can also send a file (document/photo). It will be downloaded under file_cache_dir/telegram/ and the agent can process it.\n" +
 							"Note: if Bot Privacy Mode is enabled, I may not receive normal group messages (so aliases won't trigger unless I receive the message)."
@@ -1302,6 +1302,19 @@ func newTelegramCmd() *cobra.Command {
 							continue
 						}
 						text = strings.TrimSpace(cmdArgs)
+					case "/echo":
+						if len(allowed) > 0 && !allowed[chatID] {
+							logger.Warn("telegram_unauthorized_chat", "chat_id", chatID)
+							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "unauthorized", true)
+							continue
+						}
+						msg := strings.TrimSpace(cmdArgs)
+						if msg == "" {
+							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "usage: /echo <msg>", true)
+							continue
+						}
+						_ = api.sendMessageMarkdownV2(context.Background(), chatID, msg, true)
+						continue
 					default:
 						if len(allowed) > 0 && !allowed[chatID] {
 							logger.Warn("telegram_unauthorized_chat", "chat_id", chatID)
