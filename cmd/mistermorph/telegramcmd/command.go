@@ -1305,7 +1305,7 @@ func newTelegramCmd() *cobra.Command {
 							}
 							if !ok {
 								if dec.AddressingLLMAttempted {
-									logger.Debug("telegram_group_ignored",
+									logger.Info("telegram_group_ignored",
 										"chat_id", chatID,
 										"type", chatType,
 										"text_len", len(text),
@@ -4284,7 +4284,7 @@ func indexFoldASCII(text, sub string, start int) int {
 	hay := []byte(text)
 	for i := start; i+len(needle) <= len(hay); i++ {
 		ok := true
-		for j := 0; j < len(needle); j++ {
+		for j := range len(needle) {
 			if lowerASCII(hay[i+j]) != needle[j] {
 				ok = false
 				break
