@@ -271,7 +271,7 @@ telegram:
   # - strict: only /ask, replies, and @mentions trigger in groups.
   # - smart: replies/@mentions trigger; aliases are LLM-validated for direct addressing.
   # - talkative: every group message goes through addressing LLM classification.
-  group_trigger_mode: "smart"
+  group_trigger_mode: "talkative"
   # Group reply policy is fixed to humanlike (not configurable).
   # In smart mode, how far from the start (in runes) an alias can appear to count as "addressing".
   smart_addressing_max_chars: 24
