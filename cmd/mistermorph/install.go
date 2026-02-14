@@ -18,6 +18,8 @@ import (
 )
 
 func newInstallCmd() *cobra.Command {
+	var yes bool
+
 	cmd := &cobra.Command{
 		Use:   "install [dir]",
 		Short: "Install config.yaml, HEARTBEAT.md, TOOLS.md, IDENTITY.md, SOUL.md, TODO templates, contacts templates, memory template, and built-in skills",
@@ -212,7 +214,7 @@ func newInstallCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			selected, err := skillscmd.SelectBuiltInSkills(skillDirs, false)
+			selected, err := skillscmd.SelectBuiltInSkills(skillDirs, yes)
 			if err != nil {
 				return err
 			}
@@ -224,6 +226,7 @@ func newInstallCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompts (dangerous)")
 
 	return cmd
 }

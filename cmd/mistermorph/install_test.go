@@ -219,6 +219,17 @@ func TestLoadTodoWIPTemplate(t *testing.T) {
 	}
 }
 
+func TestInstallCommandExposesYesFlag(t *testing.T) {
+	cmd := newInstallCmd()
+	flag := cmd.Flags().Lookup("yes")
+	if flag == nil {
+		t.Fatalf("expected --yes flag to exist")
+	}
+	if flag.Shorthand != "y" {
+		t.Fatalf("expected --yes shorthand to be -y, got %q", flag.Shorthand)
+	}
+}
+
 func TestLoadTodoDoneTemplate(t *testing.T) {
 	body, err := loadTodoDoneTemplate()
 	if err != nil {

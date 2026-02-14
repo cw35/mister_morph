@@ -99,7 +99,7 @@ func NewSkillsInstallBuiltinCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&skipExisting, "skip-existing", false, "Skip files that already exist in destination")
 	cmd.Flags().DurationVar(&timeout, "timeout", 20*time.Second, "Timeout for downloading a remote SKILL.md")
 	cmd.Flags().Int64Var(&maxBytes, "max-bytes", 512*1024, "Max bytes to download for a remote SKILL.md")
-	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompts (dangerous)")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompts (dangerous)")
 
 	return cmd
 }
