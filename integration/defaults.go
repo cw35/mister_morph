@@ -1,0 +1,112 @@
+package integration
+
+import (
+	"time"
+
+	"github.com/spf13/viper"
+)
+
+func applyViperDefaults() {
+	// Shared agent defaults.
+	viper.SetDefault("llm.provider", "openai")
+	viper.SetDefault("llm.endpoint", "https://api.openai.com")
+	viper.SetDefault("llm.model", "gpt-5.2")
+	viper.SetDefault("llm.api_key", "")
+	viper.SetDefault("llm.request_timeout", 90*time.Second)
+	viper.SetDefault("llm.tools_emulation_mode", "off")
+
+	viper.SetDefault("max_steps", 15)
+	viper.SetDefault("parse_retries", 2)
+	viper.SetDefault("max_token_budget", 0)
+	viper.SetDefault("timeout", 10*time.Minute)
+	viper.SetDefault("plan.max_steps", 6)
+
+	// Global.
+	viper.SetDefault("file_state_dir", "~/.morph")
+	viper.SetDefault("file_cache_dir", "/var/cache/morph")
+	viper.SetDefault("file_cache.max_age", 7*24*time.Hour)
+	viper.SetDefault("file_cache.max_files", 1000)
+	viper.SetDefault("file_cache.max_total_bytes", int64(512*1024*1024))
+	viper.SetDefault("user_agent", "mistermorph/1.0 (+https://github.com/quailyquaily)")
+
+	// Skills.
+	viper.SetDefault("skills.mode", "on")
+	viper.SetDefault("skills.dir_name", "skills")
+
+	// MAEP.
+	viper.SetDefault("maep.dir_name", "maep")
+	viper.SetDefault("maep.listen_addrs", []string{})
+
+	// Bus.
+	viper.SetDefault("bus.max_inflight", 1024)
+
+	viper.SetDefault("contacts.dir_name", "contacts")
+	viper.SetDefault("contacts.proactive.max_turns_per_session", 6)
+	viper.SetDefault("contacts.proactive.session_cooldown", 72*time.Hour)
+	viper.SetDefault("contacts.proactive.failure_cooldown", 72*time.Hour)
+
+	// Daemon server.
+	viper.SetDefault("server.bind", "127.0.0.1")
+	viper.SetDefault("server.port", 8787)
+	viper.SetDefault("server.max_queue", 100)
+	viper.SetDefault("server.url", "http://127.0.0.1:8787")
+	viper.SetDefault("server.with_maep", false)
+
+	// Submit client.
+	viper.SetDefault("submit.wait", false)
+	viper.SetDefault("submit.poll_interval", 1*time.Second)
+
+	// Telegram.
+	viper.SetDefault("telegram.poll_timeout", 30*time.Second)
+	viper.SetDefault("telegram.aliases", []string{})
+	viper.SetDefault("telegram.group_trigger_mode", "smart")
+	viper.SetDefault("telegram.smart_addressing_max_chars", 24)
+	viper.SetDefault("telegram.smart_addressing_confidence", 0.55)
+	viper.SetDefault("telegram.talkative_addressing_confidence", 0.55)
+	viper.SetDefault("telegram.max_concurrency", 3)
+	viper.SetDefault("telegram.with_maep", false)
+
+	// Heartbeat.
+	viper.SetDefault("heartbeat.enabled", true)
+	viper.SetDefault("heartbeat.interval", 30*time.Minute)
+
+	// Memory.
+	viper.SetDefault("memory.enabled", true)
+	viper.SetDefault("memory.dir_name", "memory")
+	viper.SetDefault("memory.short_term_days", 7)
+	viper.SetDefault("memory.injection.enabled", true)
+	viper.SetDefault("memory.injection.max_items", 50)
+
+	// Secrets.
+	viper.SetDefault("secrets.enabled", false)
+	viper.SetDefault("secrets.allow_profiles", []string{})
+	viper.SetDefault("secrets.aliases", map[string]string{})
+	viper.SetDefault("secrets.require_skill_profiles", false)
+	viper.SetDefault("auth_profiles", map[string]any{})
+
+	// Guard.
+	viper.SetDefault("guard.enabled", true)
+	viper.SetDefault("guard.network.url_fetch.allowed_url_prefixes", []string{"https://"})
+	viper.SetDefault("guard.network.url_fetch.deny_private_ips", true)
+	viper.SetDefault("guard.network.url_fetch.follow_redirects", false)
+	viper.SetDefault("guard.network.url_fetch.allow_proxy", false)
+	viper.SetDefault("guard.redaction.enabled", true)
+	viper.SetDefault("guard.redaction.patterns", []map[string]any{})
+	viper.SetDefault("guard.bash.require_approval", true)
+	viper.SetDefault("guard.dir_name", "guard")
+	viper.SetDefault("guard.audit.jsonl_path", "")
+	viper.SetDefault("guard.audit.rotate_max_bytes", int64(100*1024*1024))
+	viper.SetDefault("guard.approvals.enabled", true)
+
+	// Logging.
+	viper.SetDefault("logging.level", "")
+	viper.SetDefault("logging.format", "text")
+	viper.SetDefault("logging.add_source", false)
+	viper.SetDefault("logging.include_thoughts", false)
+	viper.SetDefault("logging.include_tool_params", false)
+	viper.SetDefault("logging.include_skill_contents", false)
+	viper.SetDefault("logging.max_thought_chars", 2000)
+	viper.SetDefault("logging.max_json_bytes", 32*1024)
+	viper.SetDefault("logging.max_string_value_chars", 2000)
+	viper.SetDefault("logging.max_skill_content_chars", 8000)
+}

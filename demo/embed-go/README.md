@@ -1,6 +1,6 @@
 # Demo: Embed `mistermorph` as a Go library
 
-This shows how another Go project can import `mistermorph` packages and run the agent engine in-process, with project-specific tools.
+This shows how another Go project can import `mistermorph/integration` and run the agent engine in-process, with built-in wiring plus project-specific tools.
 
 ## Run
 
@@ -14,4 +14,6 @@ GOCACHE=/tmp/gocache GOPATH=/tmp/gopath GOMODCACHE=/tmp/gomodcache \
 
 Notes:
 - This demo uses the OpenAI-compatible provider, so it needs network access to actually run.
-- It logs progress via `slog` to stderr; final JSON goes to stdout.
+- It supports `--inspect-prompt` and `--inspect-request`.
+- Built-in tools are enabled by default; the demo selects a subset in code via `cfg.BuiltinToolNames`.
+- Final JSON goes to stdout.

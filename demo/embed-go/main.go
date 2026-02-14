@@ -5,15 +5,13 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/quailyquaily/mistermorph/agent"
-	uniaiProvider "github.com/quailyquaily/mistermorph/providers/uniai"
-	"github.com/quailyquaily/mistermorph/tools"
+	"github.com/quailyquaily/mistermorph/integration"
 )
 
 // ListDirTool is an example of a project-specific tool you provide to the agent.
@@ -115,53 +113,52 @@ func (t *GetWeatherTool) Execute(ctx context.Context, params map[string]any) (st
 
 func main() {
 	var (
-		task     = flag.String("task", "List files and summarize the project.", "Task to run.")
-		model    = flag.String("model", "gpt-5.2", "Model name.")
-		endpoint = flag.String("endpoint", "https://api.openai.com", "OpenAI-compatible base URL.")
-		apiKey   = flag.String("api-key", os.Getenv("OPENAI_API_KEY"), "API key (defaults to OPENAI_API_KEY).")
+		task           = flag.String("task", "List files and summarize the project.", "Task to run.")
+		model          = flag.String("model", "gpt-5.2", "Model name.")
+		endpoint       = flag.String("endpoint", "https://api.openai.com", "OpenAI-compatible base URL.")
+		apiKey         = flag.String("api-key", os.Getenv("OPENAI_API_KEY"), "API key (defaults to OPENAI_API_KEY).")
+		inspectPrompt  = flag.Bool("inspect-prompt", false, "Dump prompts to ./dump.")
+		inspectRequest = flag.Bool("inspect-request", false, "Dump request/response payloads to ./dump.")
 	)
 	flag.Parse()
 
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	slog.SetDefault(logger)
+	cfg := integration.DefaultConfig()
+	cfg.Inspect.Prompt = *inspectPrompt
+	cfg.Inspect.Request = *inspectRequest
+	cfg.BuiltinToolNames = []string{"read_file", "url_fetch", "todo_update"}
+	cfg.Set("llm.provider", "openai")
+	cfg.Set("llm.endpoint", strings.TrimSpace(*endpoint))
+	cfg.Set("llm.api_key", strings.TrimSpace(*apiKey))
+	cfg.Set("llm.model", strings.TrimSpace(*model))
+	cfg.Set("llm.request_timeout", 60*time.Second)
+	cfg.Set("tools.url_fetch.timeout", 20*time.Second)
+	cfg.Set("tools.todo.enabled", true)
 
-	client := uniaiProvider.New(uniaiProvider.Config{
-		Provider: "openai",
-		Endpoint: *endpoint,
-		APIKey:   *apiKey,
-		Model:    *model,
-	})
+	rt, err := integration.New(cfg)
+	if err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
 
-	reg := tools.NewRegistry()
+	reg := rt.NewRegistry()
 	reg.Register(&ListDirTool{Root: "."})
 	reg.Register(&GetWeatherTool{})
-
-	spec := agent.DefaultPromptSpec()
-	spec.Identity = "You are an agent embedded inside another Go app. Use tools to inspect the local project when helpful."
-	spec.Blocks = append(spec.Blocks, agent.PromptBlock{
-		Title: "Embedding App Rules",
-		Content: strings.Join([]string{
-			"- Prefer `get_weather` when user asks weather questions.",
-			"- Always respond with plain text.",
-		}, "\n"),
-	})
-
-	engine := agent.New(
-		client,
-		reg,
-		agent.Config{MaxSteps: 8, ParseRetries: 2},
-		spec,
-		agent.WithLogger(logger),
-		agent.WithLogOptions(agent.LogOptions{
-			IncludeThoughts:   true,
-			IncludeToolParams: true,
-		}),
-	)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	final, _, err := engine.Run(ctx, *task, agent.RunOptions{Model: *model})
+	prepared, err := rt.NewRunEngineWithRegistry(ctx, *task, reg)
+	if err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	defer func() { _ = prepared.Cleanup() }()
+
+	runModel := strings.TrimSpace(*model)
+	if runModel == "" {
+		runModel = strings.TrimSpace(prepared.Model)
+	}
+	final, _, err := prepared.Engine.Run(ctx, *task, agent.RunOptions{Model: runModel})
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
