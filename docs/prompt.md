@@ -10,7 +10,7 @@ This document tracks where prompts are defined, how they are composed at runtime
 - Local tool/workspace notes are optionally appended by `promptprofile.AppendLocalToolNotesBlock(...)` in `internal/promptprofile/context.go`.
   - If local `TOOLS.md` (under `file_state_dir`) is non-empty, it is injected as `PromptBlock{Title: "Local Tool Notes"}`.
   - Injection is size-limited to 8192 bytes (fixed constant).
-- Runtime prompt blocks/rules are then appended:
+- Prompt content is composed from static template sections plus runtime-injected blocks:
   - Static rules in `agent/prompts/system.tmpl` (includes URL guidance)
   - Registry-aware prompt blocks (`agent/prompt_rules.go`, e.g. `plan_create` guidance block only when tool exists)
   - Skills/auth-profile blocks (`internal/skillsutil/skillsutil.go`)
@@ -29,7 +29,7 @@ This document tracks where prompts are defined, how they are composed at runtime
   - `internal/prompttmpl/prompttmpl.go`
 - Definitions:
   - `DefaultPromptSpec()`: base `Identity`
-  - `BuildSystemPrompt(...)`: renders identity, blocks, available tools, response schema, and rules (template-driven, with legacy fallback)
+  - `BuildSystemPrompt(...)`: renders identity, blocks, available tools, response schema, and optional additional rules
 
 ### 2) Persona identity injection
 

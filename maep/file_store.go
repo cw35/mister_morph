@@ -38,11 +38,6 @@ type dedupeFile struct {
 	Records []DedupeRecord `json:"records"`
 }
 
-type auditFile struct {
-	Version int          `json:"version"`
-	Records []AuditEvent `json:"records"`
-}
-
 type protocolHistoryFile struct {
 	Version int               `json:"version"`
 	Records []ProtocolHistory `json:"records"`
@@ -606,24 +601,7 @@ func (s *FileStore) loadAuditEventsLocked() ([]AuditEvent, error) {
 	if ok {
 		return records, nil
 	}
-
-	var legacy auditFile
-	ok, err = s.readJSONFile(s.auditPathLegacy(), &legacy)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return []AuditEvent{}, nil
-	}
-
-	out := make([]AuditEvent, 0, len(legacy.Records))
-	for _, record := range legacy.Records {
-		out = append(out, record)
-	}
-	if err := s.migrateLegacyAuditEventsLocked(out); err != nil {
-		return nil, err
-	}
-	return out, nil
+	return []AuditEvent{}, nil
 }
 
 func (s *FileStore) loadDedupeRecordsLocked() ([]DedupeRecord, error) {
@@ -850,45 +828,6 @@ func (s *FileStore) readOutboxMessagesJSONL(path string) ([]OutboxMessage, bool,
 	return records, true, nil
 }
 
-func (s *FileStore) migrateLegacyAuditEventsLocked(records []AuditEvent) error {
-	if len(records) > 0 {
-		writer, err := fsstore.NewJSONLWriter(s.auditPathJSONL(), fsstore.JSONLOptions{
-			DirPerm:        0o700,
-			FilePerm:       0o600,
-			FlushEachWrite: true,
-		})
-		if err != nil {
-			return fmt.Errorf("open audit migration writer: %w", err)
-		}
-		for _, record := range records {
-			if err := writer.AppendJSON(record); err != nil {
-				_ = writer.Close()
-				return fmt.Errorf("append migrated audit event: %w", err)
-			}
-		}
-		if err := writer.Close(); err != nil {
-			return fmt.Errorf("close audit migration writer: %w", err)
-		}
-	}
-
-	legacyPath := s.auditPathLegacy()
-	base := legacyPath + ".migrated." + time.Now().UTC().Format("20060102T150405Z")
-	target := base
-	for i := 1; ; i++ {
-		if err := os.Rename(legacyPath, target); err == nil {
-			return nil
-		} else if os.IsNotExist(err) {
-			return nil
-		} else {
-			if _, statErr := os.Stat(target); statErr == nil {
-				target = fmt.Sprintf("%s.%d", base, i)
-				continue
-			}
-			return fmt.Errorf("rename legacy audit file: %w", err)
-		}
-	}
-}
-
 func (s *FileStore) ensureNotCanceled(ctx context.Context) error {
 	if ctx == nil {
 		return nil
@@ -939,10 +878,6 @@ func (s *FileStore) contactsPath() string {
 
 func (s *FileStore) auditPathJSONL() string {
 	return filepath.Join(s.rootPath(), "audit_events.jsonl")
-}
-
-func (s *FileStore) auditPathLegacy() string {
-	return filepath.Join(s.rootPath(), "audit_events.json")
 }
 
 func (s *FileStore) dedupePath() string {

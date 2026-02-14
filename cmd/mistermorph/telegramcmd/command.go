@@ -325,10 +325,6 @@ func newTelegramCmd() *cobra.Command {
 			}
 			sem := make(chan struct{}, maxConc)
 
-			legacyHistoryMax := configutil.FlagOrViperInt(cmd, "telegram-history-max-messages", "telegram.history_max_messages")
-			if legacyHistoryMax <= 0 {
-				legacyHistoryMax = 20
-			}
 			maepMaxTurnsPerSession := configuredMAEPMaxTurnsPerSession()
 			maepSessionCooldown := configuredMAEPSessionCooldown()
 			runtimeStore, err := maepruntime.NewStateStore(statepaths.MAEPDir())
@@ -482,7 +478,6 @@ func newTelegramCmd() *cobra.Command {
 				"max_concurrency", maxConc,
 				"telegram_history_mode_cap_talkative", 16,
 				"telegram_history_mode_cap_others", 8,
-				"telegram_history_max_messages_deprecated", true,
 				"reactions_enabled", true,
 				"group_trigger_mode", groupTriggerMode,
 				"group_reply_policy", "humanlike",
@@ -989,8 +984,8 @@ func newTelegramCmd() *cobra.Command {
 									llm.Message{Role: "user", Content: task},
 									llm.Message{Role: "assistant", Content: output},
 								)
-								if len(cur) > legacyHistoryMax {
-									cur = cur[len(cur)-legacyHistoryMax:]
+								if len(cur) > telegramHistoryCap {
+									cur = cur[len(cur)-telegramHistoryCap:]
 								}
 								maepHistory[peerID] = cur
 							}
@@ -1493,8 +1488,6 @@ func newTelegramCmd() *cobra.Command {
 	cmd.Flags().Duration("telegram-poll-timeout", 30*time.Second, "Long polling timeout for getUpdates.")
 	cmd.Flags().Duration("telegram-task-timeout", 0, "Per-message agent timeout (0 uses --timeout).")
 	cmd.Flags().Int("telegram-max-concurrency", 3, "Max number of chats processed concurrently.")
-	cmd.Flags().Int("telegram-history-max-messages", 20, "Deprecated. Telegram history now uses mode caps (talkative=16, others=8).")
-	_ = cmd.Flags().MarkDeprecated("telegram-history-max-messages", "deprecated: telegram history now uses mode-based caps (talkative=16, others=8)")
 	cmd.Flags().String("file-cache-dir", "/var/cache/morph", "Global temporary file cache directory (used for Telegram file handling).")
 	cmd.Flags().Bool("inspect-prompt", false, "Dump prompts (messages) to ./dump/prompt_telegram_YYYYMMDD_HHmmss.md.")
 	cmd.Flags().Bool("inspect-request", false, "Dump LLM request/response payloads to ./dump/request_telegram_YYYYMMDD_HHmmss.md.")

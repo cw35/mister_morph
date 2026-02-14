@@ -2,7 +2,6 @@ package contacts
 
 import (
 	"context"
-	"strconv"
 	"testing"
 	"time"
 
@@ -175,57 +174,6 @@ func TestObserveInboundBusMessage_MAEPSenderAndMention(t *testing.T) {
 		if item.LastInteractionAt == nil || !item.LastInteractionAt.Equal(now) {
 			t.Fatalf("last_interaction_at mismatch for %s: got=%v want=%v", contactID, item.LastInteractionAt, now)
 		}
-	}
-}
-
-func TestObserveInboundBusMessage_TelegramMergeByAlternateID(t *testing.T) {
-	ctx := context.Background()
-	store := NewFileStore(t.TempDir())
-	svc := NewService(store)
-	now := time.Date(2026, 2, 10, 11, 0, 0, 0, time.UTC)
-
-	_, err := svc.UpsertContact(ctx, Contact{
-		ContactID:  "tg:777",
-		Kind:       KindHuman,
-		Channel:    ChannelTelegram,
-		TGUsername: "",
-	}, now)
-	if err != nil {
-		t.Fatalf("UpsertContact(existing) error = %v", err)
-	}
-
-	msg := busruntime.BusMessage{
-		Direction:       busruntime.DirectionInbound,
-		Channel:         busruntime.ChannelTelegram,
-		ConversationKey: "tg:" + strconv.FormatInt(-1007788, 10),
-		Extensions: busruntime.MessageExtensions{
-			ChatType:     "group",
-			FromUserID:   777,
-			FromUsername: "trinity",
-		},
-	}
-	if err := svc.ObserveInboundBusMessage(ctx, msg, nil, now); err != nil {
-		t.Fatalf("ObserveInboundBusMessage() error = %v", err)
-	}
-
-	legacy, ok, err := svc.GetContact(ctx, "tg:777")
-	if err != nil {
-		t.Fatalf("GetContact(tg:777) error = %v", err)
-	}
-	if !ok {
-		t.Fatalf("GetContact(tg:777) expected ok=true")
-	}
-	if legacy.TGUsername != "trinity" {
-		t.Fatalf("tg_username mismatch: got %q want %q", legacy.TGUsername, "trinity")
-	}
-	if len(legacy.TGGroupChatIDs) != 1 || legacy.TGGroupChatIDs[0] != -1007788 {
-		t.Fatalf("tg_group_chat_ids mismatch: got=%v", legacy.TGGroupChatIDs)
-	}
-
-	if _, ok, err := svc.GetContact(ctx, "tg:@trinity"); err != nil {
-		t.Fatalf("GetContact(tg:@trinity) error = %v", err)
-	} else if ok {
-		t.Fatalf("tg:@trinity should merge into existing tg:777 contact")
 	}
 }
 

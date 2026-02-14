@@ -80,15 +80,7 @@ func PromptSpecWithSkills(ctx context.Context, log *slog.Logger, logOpts agent.L
 		}
 	}
 
-	mode, modeReason := normalizeSkillsMode(cfg.Mode)
-	if modeReason != "" {
-		log.Info(
-			"skills_mode_normalized",
-			"requested_mode", strings.TrimSpace(cfg.Mode),
-			"effective_mode", mode,
-			"reason", modeReason,
-		)
-	}
+	mode := normalizeSkillsMode(cfg.Mode)
 	if mode == "off" {
 		return spec, nil, nil, nil
 	}
@@ -182,17 +174,15 @@ func PromptSpecWithSkills(ctx context.Context, log *slog.Logger, logOpts agent.L
 	return spec, loadedOrdered, ap, nil
 }
 
-func normalizeSkillsMode(raw string) (mode string, reason string) {
+func normalizeSkillsMode(raw string) (mode string) {
 	m := strings.ToLower(strings.TrimSpace(raw))
 	switch m {
-	case "", "on", "explicit":
-		return "on", ""
-	case "smart":
-		return "on", "legacy_smart_fallback_to_on"
-	case "off", "none", "disabled":
-		return "off", ""
+	case "", "on", "explicit", "smart":
+		return "on"
+	case "off", "none":
+		return "off"
 	default:
-		return "on", "unknown_mode_fallback_to_on"
+		return "on"
 	}
 }
 

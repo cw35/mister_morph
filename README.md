@@ -267,7 +267,6 @@ These arguments will dump the final system/user/tool prompts and the full LLM re
 - `--telegram-poll-timeout`
 - `--telegram-task-timeout`
 - `--telegram-max-concurrency`
-- `--telegram-history-max-messages` (deprecated in Telegram mode; history cap is mode-based)
 - `--file-cache-dir`
 
 **skills**
