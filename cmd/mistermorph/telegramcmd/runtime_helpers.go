@@ -161,13 +161,22 @@ func groupExplicitMentionReason(msg *telegramMessage, text string, botUser strin
 		}
 		return "reply", true
 	}
+	return groupBodyMentionReason(msg, text, botUser, botID)
+}
+
+func groupBodyMentionReason(msg *telegramMessage, text string, botUser string, botID int64) (string, bool) {
+	text = strings.TrimSpace(text)
 	if text == "" {
 		return "", false
 	}
 
 	// Entity-based mention of the bot (text_mention includes user id; mention includes "@username").
 	if msg != nil {
-		for _, e := range msg.Entities {
+		entities := msg.Entities
+		if strings.TrimSpace(msg.Text) == "" && strings.TrimSpace(msg.Caption) != "" {
+			entities = msg.CaptionEntities
+		}
+		for _, e := range entities {
 			switch strings.ToLower(strings.TrimSpace(e.Type)) {
 			case "text_mention":
 				if e.User != nil && e.User.ID == botID {
@@ -189,6 +198,23 @@ func groupExplicitMentionReason(msg *telegramMessage, text string, botUser strin
 		return "at_mention", true
 	}
 	return "", false
+}
+
+func shouldSkipGroupReplyWithoutBodyMention(msg *telegramMessage, text string, botUser string, botID int64) bool {
+	if msg == nil {
+		return false
+	}
+	if msg.From != nil && msg.From.IsBot {
+		return false
+	}
+	if msg.ReplyTo == nil {
+		return false
+	}
+	if msg.ReplyTo.From != nil && msg.ReplyTo.From.ID == botID {
+		return false
+	}
+	_, bodyMentioned := groupBodyMentionReason(msg, text, botUser, botID)
+	return !bodyMentioned
 }
 
 func groupAliasMentionReason(text string, aliases []string, aliasPrefixMaxChars int) (string, bool) {

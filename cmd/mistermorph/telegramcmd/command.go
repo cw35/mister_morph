@@ -1078,6 +1078,36 @@ func newTelegramCmd() *cobra.Command {
 							mu.Unlock()
 						}
 					}
+					appendIgnoredInboundHistory := func(ignoredText string) {
+						ignoredText = strings.TrimSpace(ignoredText)
+						if ignoredText == "" && messageHasDownloadableFile(msg) {
+							ignoredText = "[attachment]"
+						}
+						if msg.ReplyTo != nil {
+							if quoted := buildReplyContext(msg.ReplyTo); quoted != "" {
+								if ignoredText == "" {
+									ignoredText = "(empty)"
+								}
+								ignoredText = "Quoted message:\n> " + quoted + "\n\nUser request:\n" + ignoredText
+							}
+						}
+						mu.Lock()
+						cur := history[chatID]
+						cur = append(cur, newTelegramInboundHistoryItem(telegramJob{
+							ChatID:          chatID,
+							MessageID:       msg.MessageID,
+							SentAt:          messageSentAt,
+							ChatType:        chatType,
+							FromUserID:      fromUserID,
+							FromUsername:    fromUsername,
+							FromFirstName:   fromFirst,
+							FromLastName:    fromLast,
+							FromDisplayName: fromDisplay,
+							Text:            ignoredText,
+						}))
+						history[chatID] = trimChatHistoryItems(cur, telegramHistoryCap)
+						mu.Unlock()
+					}
 
 					cmdWord, cmdArgs := splitCommand(text)
 					normalizedCmd := normalizeSlashCommand(cmdWord)
@@ -1307,6 +1337,15 @@ func newTelegramCmd() *cobra.Command {
 							continue
 						}
 						if isGroup {
+							if shouldSkipGroupReplyWithoutBodyMention(msg, text, botUser, botID) {
+								logger.Info("telegram_group_ignored_reply_without_at_mention",
+									"chat_id", chatID,
+									"type", chatType,
+									"text_len", len(text),
+								)
+								appendIgnoredInboundHistory(rawText)
+								continue
+							}
 							mu.Lock()
 							historySnapshot := append([]chathistory.ChatHistoryItem(nil), history[chatID]...)
 							mu.Unlock()
@@ -1340,31 +1379,7 @@ func newTelegramCmd() *cobra.Command {
 									)
 								}
 								if strings.EqualFold(groupTriggerMode, "talkative") {
-									ignoredText := strings.TrimSpace(rawText)
-									if msg.ReplyTo != nil {
-										if quoted := buildReplyContext(msg.ReplyTo); quoted != "" {
-											if ignoredText == "" {
-												ignoredText = "(empty)"
-											}
-											ignoredText = "Quoted message:\n> " + quoted + "\n\nUser request:\n" + ignoredText
-										}
-									}
-									mu.Lock()
-									cur := history[chatID]
-									cur = append(cur, newTelegramInboundHistoryItem(telegramJob{
-										ChatID:          chatID,
-										MessageID:       msg.MessageID,
-										SentAt:          messageSentAt,
-										ChatType:        chatType,
-										FromUserID:      fromUserID,
-										FromUsername:    fromUsername,
-										FromFirstName:   fromFirst,
-										FromLastName:    fromLast,
-										FromDisplayName: fromDisplay,
-										Text:            ignoredText,
-									}))
-									history[chatID] = trimChatHistoryItems(cur, telegramHistoryCap)
-									mu.Unlock()
+									appendIgnoredInboundHistory(rawText)
 								}
 								continue
 							}
