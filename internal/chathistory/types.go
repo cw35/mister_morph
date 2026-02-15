@@ -3,7 +3,6 @@ package chathistory
 import "time"
 
 const (
-	ContextType     = "chat_history_context"
 	ChannelTelegram = "telegram"
 
 	KindInboundUser      = "inbound_user"
@@ -38,11 +37,4 @@ type ChatHistoryQuote struct {
 	SenderRef     string `json:"sender_ref,omitempty"`
 	Text          string `json:"text,omitempty"`
 	MarkdownBlock string `json:"markdown_block,omitempty"`
-}
-
-type ContextPayload struct {
-	Type     string            `json:"type"`
-	Channel  string            `json:"channel,omitempty"`
-	Note     string            `json:"note,omitempty"`
-	Messages []ChatHistoryItem `json:"messages"`
 }

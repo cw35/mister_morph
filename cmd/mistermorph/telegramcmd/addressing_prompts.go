@@ -9,6 +9,7 @@ import (
 	"text/template"
 
 	"github.com/quailyquaily/mistermorph/agent"
+	"github.com/quailyquaily/mistermorph/internal/chathistory"
 	"github.com/quailyquaily/mistermorph/internal/promptprofile"
 	"github.com/quailyquaily/mistermorph/internal/prompttmpl"
 )
@@ -32,23 +33,32 @@ var addressingPromptTemplateFuncs = template.FuncMap{
 var telegramAddressingSystemPromptTemplate = prompttmpl.MustParse("telegram_addressing_system", telegramAddressingSystemPromptTemplateSource, nil)
 var telegramAddressingUserPromptTemplate = prompttmpl.MustParse("telegram_addressing_user", telegramAddressingUserPromptTemplateSource, addressingPromptTemplateFuncs)
 
-const (
-	addressingPromptDefaultNote     = "No reliable heuristic pre-classification; decide directly from the message and persona."
-	addressingPromptPersonaFallback = "You are MisterMorph, a general-purpose AI agent that can use tools to complete tasks."
-)
+const addressingPromptPersonaFallback = "You are MisterMorph, a general-purpose AI agent that can use tools to complete tasks."
 
 type telegramAddressingSystemPromptData struct {
 	PersonaIdentity string
 }
 
-type telegramAddressingUserPromptData struct {
-	BotUsername        string
-	Aliases            []string
-	CurrentMessage     string
-	ChatHistoryContext any
+type telegramAddressingPromptSender struct {
+	ID          int64  `json:"id,omitempty"`
+	Username    string `json:"username,omitempty"`
+	DisplayName string `json:"display_name,omitempty"`
+	IsBot       bool   `json:"is_bot,omitempty"`
+	ChatID      int64  `json:"chat_id,omitempty"`
+	ChatType    string `json:"chat_type,omitempty"`
 }
 
-func renderTelegramAddressingPrompts(botUser string, aliases []string, text string, historyContext any) (string, string, error) {
+type telegramAddressingPromptCurrentMessage struct {
+	Text   string                         `json:"text"`
+	Sender telegramAddressingPromptSender `json:"sender"`
+}
+
+type telegramAddressingUserPromptData struct {
+	CurrentMessage      telegramAddressingPromptCurrentMessage
+	ChatHistoryMessages []chathistory.ChatHistoryItem
+}
+
+func renderTelegramAddressingPrompts(currentMessage telegramAddressingPromptCurrentMessage, historyMessages []chathistory.ChatHistoryItem) (string, string, error) {
 	personaIdentity := loadAddressingPersonaIdentity()
 	if personaIdentity == "" {
 		personaIdentity = addressingPromptPersonaFallback
@@ -61,10 +71,8 @@ func renderTelegramAddressingPrompts(botUser string, aliases []string, text stri
 		return "", "", err
 	}
 	userPrompt, err := prompttmpl.Render(telegramAddressingUserPromptTemplate, telegramAddressingUserPromptData{
-		BotUsername:        botUser,
-		Aliases:            aliases,
-		CurrentMessage:     text,
-		ChatHistoryContext: historyContext,
+		CurrentMessage:      currentMessage,
+		ChatHistoryMessages: historyMessages,
 	})
 	if err != nil {
 		return "", "", err

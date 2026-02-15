@@ -2,6 +2,7 @@ package telegramcmd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -632,7 +633,7 @@ func newTelegramCmd() *cobra.Command {
 							}
 
 							ctx, cancel := context.WithTimeout(context.Background(), taskTimeout)
-							final, _, loadedSkills, reaction, runErr := runTelegramTask(ctx, logger, logOpts, client, reg, api, filesEnabled, fileCacheDir, filesMaxBytes, sharedGuard, cfg, allowed, job, model, h, telegramHistoryCap, sticky, requestTimeout, publishTelegramText)
+							final, _, loadedSkills, reaction, runErr := runTelegramTask(ctx, logger, logOpts, client, reg, api, filesEnabled, fileCacheDir, filesMaxBytes, sharedGuard, cfg, allowed, job, botUser, model, h, telegramHistoryCap, sticky, requestTimeout, publishTelegramText)
 							cancel()
 
 							if runErr != nil {
@@ -1533,19 +1534,18 @@ func newTelegramCmd() *cobra.Command {
 	return cmd
 }
 
-func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, api *telegramAPI, filesEnabled bool, fileCacheDir string, filesMaxBytes int64, sharedGuard *guard.Guard, cfg agent.Config, allowedIDs map[int64]bool, job telegramJob, model string, history []chathistory.ChatHistoryItem, historyCap int, stickySkills []string, requestTimeout time.Duration, sendTelegramText func(context.Context, int64, string, string) error) (*agent.Final, *agent.Context, []string, *telegramtools.Reaction, error) {
+func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, api *telegramAPI, filesEnabled bool, fileCacheDir string, filesMaxBytes int64, sharedGuard *guard.Guard, cfg agent.Config, allowedIDs map[int64]bool, job telegramJob, botUsername string, model string, history []chathistory.ChatHistoryItem, historyCap int, stickySkills []string, requestTimeout time.Duration, sendTelegramText func(context.Context, int64, string, string) error) (*agent.Final, *agent.Context, []string, *telegramtools.Reaction, error) {
 	if sendTelegramText == nil {
 		return nil, nil, nil, nil, fmt.Errorf("send telegram text callback is required")
 	}
 	task := job.Text
-	renderedHistoryMsg, err := chathistory.RenderContextUserMessage(chathistory.ChannelTelegram, history)
+	historyRaw, err := json.Marshal(map[string]any{
+		"chat_history_messages": chathistory.BuildMessages(chathistory.ChannelTelegram, history),
+	})
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("render telegram history context: %w", err)
 	}
-	llmHistory := make([]llm.Message, 0, 1)
-	if strings.TrimSpace(renderedHistoryMsg.Content) != "" {
-		llmHistory = append(llmHistory, renderedHistoryMsg)
-	}
+	llmHistory := []llm.Message{{Role: "user", Content: string(historyRaw)}}
 	if baseReg == nil {
 		baseReg = registryFromViper()
 		toolsutil.BindTodoUpdateToolLLM(baseReg, client, model)
@@ -1671,6 +1671,10 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 			"telegram_chat_type":    job.ChatType,
 			"telegram_from_user_id": job.FromUserID,
 		}
+	}
+	botUsername = strings.TrimPrefix(strings.TrimSpace(botUsername), "@")
+	if botUsername != "" {
+		meta["telegram_bot_username"] = botUsername
 	}
 	final, agentCtx, err := engine.Run(ctx, task, agent.RunOptions{Model: model, History: llmHistory, Meta: meta})
 	if err != nil {

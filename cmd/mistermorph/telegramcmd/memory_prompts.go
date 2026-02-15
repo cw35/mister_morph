@@ -31,7 +31,7 @@ var memoryDraftUserPromptTemplate = prompttmpl.MustParse("telegram_memory_draft_
 
 type memoryDraftUserPromptData struct {
 	SessionContext       MemoryDraftContext
-	ChatHistory          chathistory.ContextPayload
+	ChatHistoryMessages  []chathistory.ChatHistoryItem
 	CurrentTask          string
 	CurrentOutput        string
 	ExistingSummaryItems []memory.SummaryItem
@@ -50,7 +50,7 @@ func renderMemoryDraftPrompts(
 	}
 	userPrompt, err := prompttmpl.Render(memoryDraftUserPromptTemplate, memoryDraftUserPromptData{
 		SessionContext:       ctxInfo,
-		ChatHistory:          chathistory.BuildContextPayload(chathistory.ChannelTelegram, history),
+		ChatHistoryMessages:  chathistory.BuildMessages(chathistory.ChannelTelegram, history),
 		CurrentTask:          task,
 		CurrentOutput:        output,
 		ExistingSummaryItems: existing.SummaryItems,

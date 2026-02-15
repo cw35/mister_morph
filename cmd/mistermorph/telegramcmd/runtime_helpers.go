@@ -120,7 +120,7 @@ func groupTriggerDecision(ctx context.Context, client llm.Client, model string, 
 		if addressingLLMTimeout > 0 {
 			addrCtx, cancel = context.WithTimeout(addrCtx, addressingLLMTimeout)
 		}
-		llmDec, llmOK, llmErr := addressingDecisionViaLLM(addrCtx, client, model, botUser, aliases, text, history)
+		llmDec, llmOK, llmErr := addressingDecisionViaLLM(addrCtx, client, model, msg, text, history)
 		cancel()
 		if llmErr != nil {
 			return dec, false, llmErr
@@ -1601,7 +1601,7 @@ type telegramAddressingLLMDecision struct {
 	Reason     string  `json:"reason"`
 }
 
-func addressingDecisionViaLLM(ctx context.Context, client llm.Client, model string, botUser string, aliases []string, text string, history []chathistory.ChatHistoryItem) (telegramAddressingLLMDecision, bool, error) {
+func addressingDecisionViaLLM(ctx context.Context, client llm.Client, model string, msg *telegramMessage, text string, history []chathistory.ChatHistoryItem) (telegramAddressingLLMDecision, bool, error) {
 	if ctx == nil || client == nil {
 		return telegramAddressingLLMDecision{}, false, nil
 	}
@@ -1611,8 +1611,23 @@ func addressingDecisionViaLLM(ctx context.Context, client llm.Client, model stri
 		return telegramAddressingLLMDecision{}, false, fmt.Errorf("missing model for addressing_llm")
 	}
 
-	historyPayload := chathistory.BuildContextPayload(chathistory.ChannelTelegram, history)
-	sys, user, err := renderTelegramAddressingPrompts(botUser, aliases, text, historyPayload)
+	historyMessages := chathistory.BuildMessages(chathistory.ChannelTelegram, history)
+	currentMessage := telegramAddressingPromptCurrentMessage{
+		Text: text,
+	}
+	if msg != nil {
+		if msg.From != nil {
+			currentMessage.Sender.ID = msg.From.ID
+			currentMessage.Sender.IsBot = msg.From.IsBot
+			currentMessage.Sender.Username = strings.TrimSpace(msg.From.Username)
+			currentMessage.Sender.DisplayName = strings.TrimSpace(telegramDisplayName(msg.From))
+		}
+		if msg.Chat != nil {
+			currentMessage.Sender.ChatID = msg.Chat.ID
+			currentMessage.Sender.ChatType = strings.TrimSpace(msg.Chat.Type)
+		}
+	}
+	sys, user, err := renderTelegramAddressingPrompts(currentMessage, historyMessages)
 	if err != nil {
 		return telegramAddressingLLMDecision{}, false, fmt.Errorf("render addressing prompts: %w", err)
 	}
