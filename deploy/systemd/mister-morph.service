@@ -71,7 +71,6 @@ RestrictSUIDSGID=true
 RestrictRealtime=true
 RestrictNamespaces=true
 LockPersonality=true
-MemoryDenyWriteExecute=true
 SystemCallArchitectures=native
 
 # Needs outbound network (OpenAI/Telegram/web_search) + local unix sockets.

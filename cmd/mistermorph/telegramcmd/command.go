@@ -1401,13 +1401,14 @@ func newTelegramCmd() *cobra.Command {
 								}
 								continue
 							}
-							if dec.UsedAddressingLLM {
+							if dec.UsedAddressingLLM && dec.AddressingLLMAddressed {
 								replyToMessageID = quoteReplyMessageIDForGroupTrigger(msg, dec)
 								quoteReply := replyToMessageID > 0
 								logger.Info("telegram_group_trigger",
 									"chat_id", chatID,
 									"type", chatType,
 									"reason", dec.Reason,
+									"llm_addressed", dec.AddressingLLMAddressed,
 									"confidence", dec.AddressingLLMConfidence,
 									"irrelevance", dec.AddressingLLMIrrelevance,
 									"impulse", dec.AddressingImpulse,
@@ -1420,6 +1421,7 @@ func newTelegramCmd() *cobra.Command {
 									"chat_id", chatID,
 									"type", chatType,
 									"reason", dec.Reason,
+									"llm_addressed", dec.AddressingLLMAddressed,
 									"confidence", dec.AddressingLLMConfidence,
 									"irrelevance", dec.AddressingLLMIrrelevance,
 									"impulse", dec.AddressingImpulse,
