@@ -284,7 +284,7 @@ telegram:
   # In smart mode, how far from the start (in runes) an alias can appear to count as "addressing".
   smart_addressing_max_chars: 24
   # Minimum confidence required to accept the LLM addressing classification.
-  addressing_confidence_threshold: 0.6
+  addressing_confidence_threshold: 0.7
   # Maximum irrelevance allowed to accept the LLM addressing classification.
   addressing_irrelevance_threshold: 0.3
   # Long polling timeout.
