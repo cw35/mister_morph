@@ -91,6 +91,13 @@ type maepFeedbackClassification struct {
 	Confidence     float64 `json:"confidence"`
 }
 
+func shouldRunInitFlow(initRequired bool, normalizedCmd string) bool {
+	if !initRequired {
+		return false
+	}
+	return strings.TrimSpace(normalizedCmd) == ""
+}
+
 func resolveHealthListen(cmd *cobra.Command) string {
 	return healthcheck.NormalizeListen(configutil.FlagOrViperString(cmd, "health-listen", "health.listen"))
 }
@@ -1111,7 +1118,7 @@ func newTelegramCmd() *cobra.Command {
 
 					cmdWord, cmdArgs := splitCommand(text)
 					normalizedCmd := normalizeSlashCommand(cmdWord)
-					if initRequired {
+					if shouldRunInitFlow(initRequired, normalizedCmd) {
 						if len(allowed) > 0 && !allowed[chatID] {
 							logger.Warn("telegram_unauthorized_chat", "chat_id", chatID)
 							_ = api.sendMessageMarkdownV2(context.Background(), chatID, "unauthorized", true)
