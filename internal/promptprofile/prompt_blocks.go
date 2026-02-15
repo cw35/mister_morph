@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
-	"unicode/utf8"
 
 	"github.com/quailyquaily/mistermorph/agent"
 	"github.com/quailyquaily/mistermorph/internal/prompttmpl"
@@ -16,9 +15,8 @@ import (
 )
 
 const (
-	localToolNotesDefaultMaxBytes   = 8 * 1024
 	planCreatePromptBlockTitle      = "Plan Create Guidance"
-	localToolNotesPromptBlockTitle  = "Local Tool Notes"
+	localToolNotesPromptBlockTitle  = "Local Scripts"
 	memorySummariesPromptBlockTitle = "Memory Summaries"
 	groupUsernamesPromptBlockTitle  = "Group Usernames"
 	TelegramRuntimePromptBlockTitle = "Telegram Policies"
@@ -80,21 +78,27 @@ func AppendLocalToolNotesBlock(spec *agent.PromptSpec, log *slog.Logger) {
 
 	content := strings.TrimSpace(string(raw))
 	if content == "" {
-		log.Debug("prompt_local_tool_notes_skipped", "path", path, "reason", "empty")
-		return
+		content = "No local tool notes available."
 	}
 
-	content, truncated := truncateUTF8Bytes(content, localToolNotesDefaultMaxBytes)
-	if content == "" {
-		log.Debug("prompt_local_tool_notes_skipped", "path", path, "reason", "empty_after_truncate")
-		return
-	}
+	content = "* The following are notes about the local scripts. Please read them carefully before using any local scripts.\n" +
+		"* You can use python or bash to create new script to satisfy specific needs.\n" +
+		"* Always put your scripts at `file_state_dir/`, and update the SCRIPTS.md in following format:" +
+		"```" + "\n" +
+		`- name: "get_ip"` + "\n" +
+		"  script: `file_state_dir/scripts/get_ip.sh`" + "\n" +
+		`  description: "Get the current machine's IP address."` + "\n" +
+		`  usage: "file_state_dir/scripts/get_ip.sh <options or flags>"` + "\n" +
+		"```\n" +
+		">>> BEGIN OF SCRIPTS.md <<<\n" +
+		"\n" + content + "\n" +
+		">>> END OF SCRIPTS.md <<<"
 
 	spec.Blocks = append(spec.Blocks, agent.PromptBlock{
 		Title:   localToolNotesPromptBlockTitle,
 		Content: content,
 	})
-	log.Info("prompt_local_tool_notes_applied", "path", path, "size", len(content), "max_bytes", localToolNotesDefaultMaxBytes, "truncated", truncated)
+	log.Info("prompt_local_tool_notes_applied", "path", path, "size", len(content))
 }
 
 func AppendMemorySummariesBlock(spec *agent.PromptSpec, content string) {
@@ -151,25 +155,4 @@ func AppendMAEPReplyPolicyBlock(spec *agent.PromptSpec) {
 		Title:   MAEPReplyPromptBlockTitle,
 		Content: content,
 	})
-}
-
-func truncateUTF8Bytes(input string, maxBytes int) (string, bool) {
-	input = strings.TrimSpace(input)
-	if input == "" {
-		return "", false
-	}
-	if maxBytes <= 0 {
-		return "", len(input) > 0
-	}
-
-	raw := []byte(input)
-	if len(raw) <= maxBytes {
-		return input, false
-	}
-
-	clipped := raw[:maxBytes]
-	for len(clipped) > 0 && !utf8.Valid(clipped) {
-		clipped = clipped[:len(clipped)-1]
-	}
-	return strings.TrimSpace(string(clipped)), true
 }

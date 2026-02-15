@@ -8,8 +8,8 @@ This document tracks where prompts are defined, how they are composed at runtime
 - Persona identity is optionally **overridden** by `promptprofile.ApplyPersonaIdentity(...)` in `internal/promptprofile/identity.go`.
   - If local `IDENTITY.md` / `SOUL.md` are loaded and not `status: draft`, `spec.Identity` is replaced.
 - Local tool/workspace notes are optionally appended by `promptprofile.AppendLocalToolNotesBlock(...)` in `internal/promptprofile/context.go`.
-  - If local `TOOLS.md` (under `file_state_dir`) is non-empty, it is injected as `PromptBlock{Title: "Local Tool Notes"}`.
-  - Injection is size-limited to 8192 bytes (fixed constant).
+  - If local `SCRIPTS.md` (under `file_state_dir`) is non-empty, it is injected as `PromptBlock{Title: "Local Tool Notes"}`.
+  - No size truncation is applied by `AppendLocalToolNotesBlock(...)`.
 - Prompt content is composed from static template sections plus runtime-injected blocks:
   - Static rules in `agent/prompts/system.tmpl` (includes URL guidance)
   - Registry-aware prompt blocks (`agent/prompt_rules.go`, e.g. `plan_create` guidance block only when tool exists)
@@ -41,9 +41,8 @@ This document tracks where prompts are defined, how they are composed at runtime
 
 - File: `internal/promptprofile/context.go`
 - Definition:
-  - `AppendLocalToolNotesBlock(...)` loads local `TOOLS.md` from `file_state_dir`
+  - `AppendLocalToolNotesBlock(...)` loads local `SCRIPTS.md` from `file_state_dir`
   - When non-empty, appends `PromptBlock{Title: "Local Tool Notes"}`
-  - Content is truncated by configured byte limit before injection
 
 ### 3) Static Rules + Registry Blocks
 

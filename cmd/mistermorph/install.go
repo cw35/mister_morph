@@ -22,7 +22,7 @@ func newInstallCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "install [dir]",
-		Short: "Install config.yaml, HEARTBEAT.md, TOOLS.md, IDENTITY.md, SOUL.md, TODO templates, contacts templates, memory template, and built-in skills",
+		Short: "Install config.yaml, HEARTBEAT.md, SCRIPTS.md, IDENTITY.md, SOUL.md, TODO templates, contacts templates, memory template, and built-in skills",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := resolveInstallDir(args)
@@ -46,7 +46,7 @@ func newInstallCmd() *cobra.Command {
 			if _, err := os.Stat(hbPath); err == nil {
 				writeHeartbeat = false
 			}
-			toolsPath := filepath.Join(dir, "TOOLS.md")
+			toolsPath := filepath.Join(dir, "SCRIPTS.md")
 			writeTools := true
 			if _, err := os.Stat(toolsPath); err == nil {
 				writeTools = false
@@ -122,7 +122,7 @@ func newInstallCmd() *cobra.Command {
 					Loader: loadHeartbeatTemplate,
 				},
 				{
-					Name:   "TOOLS.md",
+					Name:   "SCRIPTS.md",
 					Path:   toolsPath,
 					Write:  writeTools,
 					Loader: loadToolsTemplate,
@@ -273,9 +273,9 @@ func loadIdentityTemplate() (string, error) {
 }
 
 func loadToolsTemplate() (string, error) {
-	data, err := assets.ConfigFS.ReadFile("config/TOOLS.md")
+	data, err := assets.ConfigFS.ReadFile("config/SCRIPTS.md")
 	if err != nil {
-		return "", fmt.Errorf("read embedded TOOLS.md: %w", err)
+		return "", fmt.Errorf("read embedded SCRIPTS.md: %w", err)
 	}
 	return string(data), nil
 }

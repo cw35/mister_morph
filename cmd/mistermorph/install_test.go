@@ -201,7 +201,7 @@ func TestLoadToolsTemplate(t *testing.T) {
 	if body == "" {
 		t.Fatalf("expected non-empty TOOLS template")
 	}
-	if !strings.Contains(body, "# TOOLS.md - Local Tool Notes") {
+	if !strings.Contains(body, "# SCRIPTS.md - Local Scripts Notes") {
 		t.Fatalf("TOOLS template seems invalid")
 	}
 }

@@ -327,7 +327,6 @@ trace: false
 # Base directory for local state (memory/skills/heartbeat).
 file_state_dir: "~/.morph"
 # Prompt profile context injection.
-# Note: "Local Tool Notes" (TOOLS.md) injection max bytes is fixed at 8192 (not configurable).
 # Global temporary file cache directory used for inbound/outbound file handling (e.g. Telegram).
 file_cache_dir: "/var/cache/morph"
 file_cache:
