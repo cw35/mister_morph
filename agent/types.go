@@ -113,4 +113,7 @@ type RunOptions struct {
 	Model   string
 	History []llm.Message
 	Meta    map[string]any
+	// SkipTaskMessage suppresses appending task as a trailing user message.
+	// Useful when the current user input is already represented in structured History.
+	SkipTaskMessage bool
 }

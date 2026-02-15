@@ -149,7 +149,7 @@ func formatInjection(longSummary string, shortSummaries []ShortTermSummary, maxI
 	lines := make([]string, 0, 8)
 	count := 0
 	if strings.TrimSpace(longSummary) != "" && count < maxItems {
-		lines = append(lines, "[Memory:LongTerm:Summary]")
+		lines = append(lines, "<Memory:LongTerm:Summary>")
 		lines = append(lines, "- "+strings.TrimSpace(longSummary))
 		count++
 	}
@@ -158,7 +158,7 @@ func formatInjection(longSummary string, shortSummaries []ShortTermSummary, maxI
 		if len(lines) > 0 {
 			lines = append(lines, "")
 		}
-		lines = append(lines, "[Memory:ShortTerm:Recent]")
+		lines = append(lines, "<Memory:ShortTerm:Recent>")
 		summaries := append([]ShortTermSummary{}, shortSummaries...)
 		sort.SliceStable(summaries, func(i, j int) bool {
 			return summaries[i].Date > summaries[j].Date

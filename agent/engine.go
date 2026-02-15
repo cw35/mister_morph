@@ -184,7 +184,11 @@ func (e *Engine) Run(ctx context.Context, task string, opts RunOptions) (*Final,
 		)
 	}
 
-	messages = append(messages, llm.Message{Role: "user", Content: task})
+	if !opts.SkipTaskMessage {
+		if strings.TrimSpace(task) != "" {
+			messages = append(messages, llm.Message{Role: "user", Content: task})
+		}
+	}
 
 	requestedWrites := ExtractFileWritePaths(task)
 

@@ -1548,8 +1548,12 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 		return nil, nil, nil, nil, fmt.Errorf("send telegram text callback is required")
 	}
 	task := job.Text
+	historyWithCurrent := append([]chathistory.ChatHistoryItem(nil), history...)
+	if !job.IsHeartbeat {
+		historyWithCurrent = append(historyWithCurrent, newTelegramInboundHistoryItem(job))
+	}
 	historyRaw, err := json.MarshalIndent(map[string]any{
-		"chat_history_messages": chathistory.BuildMessages(chathistory.ChannelTelegram, history),
+		"chat_history_messages": chathistory.BuildMessages(chathistory.ChannelTelegram, historyWithCurrent),
 	}, "", "  ")
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("render telegram history context: %w", err)
@@ -1685,7 +1689,12 @@ func runTelegramTask(ctx context.Context, logger *slog.Logger, logOpts agent.Log
 	if botUsername != "" {
 		meta["telegram_bot_username"] = botUsername
 	}
-	final, agentCtx, err := engine.Run(ctx, task, agent.RunOptions{Model: model, History: llmHistory, Meta: meta})
+	final, agentCtx, err := engine.Run(ctx, task, agent.RunOptions{
+		Model:           model,
+		History:         llmHistory,
+		Meta:            meta,
+		SkipTaskMessage: true,
+	})
 	if err != nil {
 		return final, agentCtx, loadedSkills, nil, err
 	}
