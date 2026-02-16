@@ -4,6 +4,7 @@ import "time"
 
 const (
 	ChannelTelegram = "telegram"
+	ChannelSlack    = "slack"
 
 	KindInboundUser      = "inbound_user"
 	KindInboundReaction  = "inbound_reaction"

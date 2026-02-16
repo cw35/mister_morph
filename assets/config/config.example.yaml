@@ -283,6 +283,30 @@ telegram:
   max_concurrency: 3
   # Note: file handling is always enabled; files are downloaded under file_cache_dir/telegram/ (max size is hardcoded).
 
+# Slack bot mode (`mistermorph slack`, Socket Mode only).
+slack:
+  # Bot token with chat:write + history scopes. Prefer env var: MISTER_MORPH_SLACK_BOT_TOKEN
+  bot_token: ""
+  # App-level token for Socket Mode. Prefer env var: MISTER_MORPH_SLACK_APP_TOKEN
+  app_token: ""
+  # Optional allowlist of workspace IDs. Empty means allow the bot home workspace.
+  allowed_team_ids: []
+  # Optional allowlist of channel IDs. Empty means allow all channels in allowed teams.
+  allowed_channel_ids: []
+  # Group trigger mode:
+  # - strict: only explicit triggers (app_mention/@bot mention/thread reply) in groups.
+  # - smart: every group message goes through addressing LLM classification; `addressed=true` is required.
+  # - talkative: every group message goes through addressing LLM classification; does not require `addressed=true`.
+  group_trigger_mode: "smart"
+  # Minimum confidence required to accept the LLM addressing classification.
+  addressing_confidence_threshold: 0.6
+  # Minimum interject required to accept the LLM addressing classification.
+  addressing_interject_threshold: 0.6
+  # Per-message agent timeout (0 uses top-level timeout).
+  task_timeout: "0s"
+  # Max number of conversations processed concurrently.
+  max_concurrency: 3
+
 # Shared health check HTTP endpoint for long-running modes:
 # - `mistermorph serve` (daemon HTTP server)
 # - `mistermorph maep serve`

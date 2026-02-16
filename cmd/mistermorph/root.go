@@ -14,6 +14,7 @@ import (
 	"github.com/quailyquaily/mistermorph/cmd/mistermorph/maepcmd"
 	"github.com/quailyquaily/mistermorph/cmd/mistermorph/runcmd"
 	"github.com/quailyquaily/mistermorph/cmd/mistermorph/skillscmd"
+	"github.com/quailyquaily/mistermorph/cmd/mistermorph/slackcmd"
 	"github.com/quailyquaily/mistermorph/cmd/mistermorph/telegramcmd"
 	"github.com/quailyquaily/mistermorph/internal/heartbeatutil"
 	"github.com/quailyquaily/mistermorph/internal/llmconfig"
@@ -125,6 +126,33 @@ func newRootCmd() *cobra.Command {
 		BuildHeartbeatTask: heartbeatutil.BuildHeartbeatTask,
 		BuildHeartbeatMeta: func(source string, interval time.Duration, checklistPath string, checklistEmpty bool, extra map[string]any) map[string]any {
 			return heartbeatutil.BuildHeartbeatMeta(source, interval, checklistPath, checklistEmpty, nil, extra)
+		},
+	}))
+	cmd.AddCommand(slackcmd.NewCommand(slackcmd.Dependencies{
+		LoggerFromViper:     logutil.LoggerFromViper,
+		LogOptionsFromViper: logutil.LogOptionsFromViper,
+		CreateLLMClient: func(provider, endpoint, apiKey, model string, timeout time.Duration) (llm.Client, error) {
+			return llmutil.ClientFromConfig(llmconfig.ClientConfig{
+				Provider:       provider,
+				Endpoint:       endpoint,
+				APIKey:         apiKey,
+				Model:          model,
+				RequestTimeout: timeout,
+			})
+		},
+		LLMProviderFromViper:   llmutil.ProviderFromViper,
+		LLMEndpointForProvider: llmutil.EndpointForProvider,
+		LLMAPIKeyForProvider:   llmutil.APIKeyForProvider,
+		LLMModelForProvider:    llmutil.ModelForProvider,
+		RegistryFromViper:      registryFromViper,
+		RegisterPlanTool:       toolsutil.RegisterPlanTool,
+		GuardFromViper:         guardFromViper,
+		PromptSpecForSlack: func(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, task string, client llm.Client, model string, stickySkills []string) (agent.PromptSpec, []string, []string, error) {
+			cfg := skillsutil.SkillsConfigFromViper()
+			if len(stickySkills) > 0 {
+				cfg.Requested = append(cfg.Requested, stickySkills...)
+			}
+			return skillsutil.PromptSpecWithSkills(ctx, logger, logOpts, task, client, model, cfg)
 		},
 	}))
 	cmd.AddCommand(newToolsCmd())

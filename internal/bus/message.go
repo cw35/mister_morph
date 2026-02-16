@@ -33,6 +33,11 @@ type MessageExtensions struct {
 	FromFirstName     string   `json:"from_first_name,omitempty"`
 	FromLastName      string   `json:"from_last_name,omitempty"`
 	FromDisplayName   string   `json:"from_display_name,omitempty"`
+	TeamID            string   `json:"team_id,omitempty"`
+	ChannelID         string   `json:"channel_id,omitempty"`
+	FromUserRef       string   `json:"from_user_ref,omitempty"`
+	ThreadTS          string   `json:"thread_ts,omitempty"`
+	EventID           string   `json:"event_id,omitempty"`
 	MentionUsers      []string `json:"mention_users,omitempty"`
 }
 
@@ -141,6 +146,31 @@ func (m BusMessage) Validate() error {
 	}
 	if m.Extensions.FromDisplayName != "" {
 		if err := validateOptionalCanonicalString("extensions.from_display_name", m.Extensions.FromDisplayName); err != nil {
+			return err
+		}
+	}
+	if m.Extensions.TeamID != "" {
+		if err := validateOptionalCanonicalString("extensions.team_id", m.Extensions.TeamID); err != nil {
+			return err
+		}
+	}
+	if m.Extensions.ChannelID != "" {
+		if err := validateOptionalCanonicalString("extensions.channel_id", m.Extensions.ChannelID); err != nil {
+			return err
+		}
+	}
+	if m.Extensions.FromUserRef != "" {
+		if err := validateOptionalCanonicalString("extensions.from_user_ref", m.Extensions.FromUserRef); err != nil {
+			return err
+		}
+	}
+	if m.Extensions.ThreadTS != "" {
+		if err := validateOptionalCanonicalString("extensions.thread_ts", m.Extensions.ThreadTS); err != nil {
+			return err
+		}
+	}
+	if m.Extensions.EventID != "" {
+		if err := validateOptionalCanonicalString("extensions.event_id", m.Extensions.EventID); err != nil {
 			return err
 		}
 	}

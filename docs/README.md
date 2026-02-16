@@ -8,6 +8,7 @@
 - [Skills](./skills.md)
 - [MAEP](./maep.md)
 - [MAEP Implementation](./maep_impl.md)
+- [Slack (Socket Mode)](./slack.md)
 - [Bus](./bus.md)
 - [Bus Implementation](./bus_impl.md)
 - [Troubleshoots](./troubleshoots.md)

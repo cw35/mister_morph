@@ -167,6 +167,29 @@ func TestMessageValidate_RejectsPayloadMismatch(t *testing.T) {
 	}
 }
 
+func TestMessageValidate_AllowsSlackExtensions(t *testing.T) {
+	msg := validMessage(t)
+	msg.Channel = ChannelSlack
+	msg.ConversationKey = "slack:T111:C222"
+	msg.Extensions.TeamID = "T111"
+	msg.Extensions.ChannelID = "C222"
+	msg.Extensions.FromUserRef = "U333"
+	msg.Extensions.ThreadTS = "1739500000.123456"
+	msg.Extensions.EventID = "Ev01"
+	if err := msg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestMessageValidate_RejectsInvalidSlackExtension(t *testing.T) {
+	msg := validMessage(t)
+	msg.Extensions.TeamID = " T111"
+	err := msg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "extensions.team_id") {
+		t.Fatalf("Validate() error = %v, want extensions.team_id error", err)
+	}
+}
+
 func validMessage(t *testing.T) BusMessage {
 	t.Helper()
 	payload, err := EncodeMessageEnvelope(TopicChatMessage, MessageEnvelope{

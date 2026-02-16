@@ -68,6 +68,17 @@ func initViperDefaults() {
 	viper.SetDefault("telegram.max_concurrency", 3)
 	viper.SetDefault("telegram.with_maep", false)
 
+	// Slack
+	viper.SetDefault("slack.bot_token", "")
+	viper.SetDefault("slack.app_token", "")
+	viper.SetDefault("slack.allowed_team_ids", []string{})
+	viper.SetDefault("slack.allowed_channel_ids", []string{})
+	viper.SetDefault("slack.task_timeout", 0*time.Second)
+	viper.SetDefault("slack.max_concurrency", 3)
+	viper.SetDefault("slack.group_trigger_mode", "smart")
+	viper.SetDefault("slack.addressing_confidence_threshold", 0.6)
+	viper.SetDefault("slack.addressing_interject_threshold", 0.6)
+
 	// Heartbeat
 	viper.SetDefault("heartbeat.enabled", true)
 	viper.SetDefault("heartbeat.interval", 30*time.Minute)
