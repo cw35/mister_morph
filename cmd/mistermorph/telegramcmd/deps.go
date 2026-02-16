@@ -9,26 +9,26 @@ import (
 	"github.com/quailyquaily/mistermorph/agent"
 	"github.com/quailyquaily/mistermorph/guard"
 	"github.com/quailyquaily/mistermorph/internal/llmconfig"
+	"github.com/quailyquaily/mistermorph/internal/outputfmt"
 	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/quailyquaily/mistermorph/tools"
 	"github.com/spf13/cobra"
 )
 
 type Dependencies struct {
-	LoggerFromViper                func() (*slog.Logger, error)
-	LogOptionsFromViper            func() agent.LogOptions
-	CreateLLMClient                func(provider, endpoint, apiKey, model string, timeout time.Duration) (llm.Client, error)
-	LLMProviderFromViper           func() string
-	LLMEndpointForProvider         func(provider string) string
-	LLMAPIKeyForProvider           func(provider string) string
-	LLMModelForProvider            func(provider string) string
-	RegistryFromViper              func() *tools.Registry
-	RegisterPlanTool               func(reg *tools.Registry, client llm.Client, model string)
-	GuardFromViper                 func(logger *slog.Logger) *guard.Guard
-	PromptSpecForTelegram          func(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, task string, client llm.Client, model string, stickySkills []string) (agent.PromptSpec, []string, []string, error)
-	FormatFinalOutput              func(final *agent.Final) string
-	BuildHeartbeatTask             func(checklistPath string) (string, bool, error)
-	BuildHeartbeatMeta             func(source string, interval time.Duration, checklistPath string, checklistEmpty bool, extra map[string]any) map[string]any
+	LoggerFromViper        func() (*slog.Logger, error)
+	LogOptionsFromViper    func() agent.LogOptions
+	CreateLLMClient        func(provider, endpoint, apiKey, model string, timeout time.Duration) (llm.Client, error)
+	LLMProviderFromViper   func() string
+	LLMEndpointForProvider func(provider string) string
+	LLMAPIKeyForProvider   func(provider string) string
+	LLMModelForProvider    func(provider string) string
+	RegistryFromViper      func() *tools.Registry
+	RegisterPlanTool       func(reg *tools.Registry, client llm.Client, model string)
+	GuardFromViper         func(logger *slog.Logger) *guard.Guard
+	PromptSpecForTelegram  func(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, task string, client llm.Client, model string, stickySkills []string) (agent.PromptSpec, []string, []string, error)
+	BuildHeartbeatTask     func(checklistPath string) (string, bool, error)
+	BuildHeartbeatMeta     func(source string, interval time.Duration, checklistPath string, checklistEmpty bool, extra map[string]any) map[string]any
 }
 
 var deps Dependencies
@@ -128,10 +128,7 @@ func promptSpecForTelegram(ctx context.Context, logger *slog.Logger, logOpts age
 }
 
 func formatFinalOutput(final *agent.Final) string {
-	if deps.FormatFinalOutput == nil {
-		return ""
-	}
-	return deps.FormatFinalOutput(final)
+	return outputfmt.FormatFinalOutput(final)
 }
 
 func buildHeartbeatTask(checklistPath string) (string, bool, error) {

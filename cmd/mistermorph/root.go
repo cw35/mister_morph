@@ -19,7 +19,6 @@ import (
 	"github.com/quailyquaily/mistermorph/internal/llmconfig"
 	"github.com/quailyquaily/mistermorph/internal/llmutil"
 	"github.com/quailyquaily/mistermorph/internal/logutil"
-	"github.com/quailyquaily/mistermorph/internal/outputfmt"
 	"github.com/quailyquaily/mistermorph/internal/pathutil"
 	"github.com/quailyquaily/mistermorph/internal/skillsutil"
 	"github.com/quailyquaily/mistermorph/internal/toolsutil"
@@ -123,7 +122,6 @@ func newRootCmd() *cobra.Command {
 			}
 			return skillsutil.PromptSpecWithSkills(ctx, logger, logOpts, task, client, model, cfg)
 		},
-		FormatFinalOutput:  outputfmt.FormatFinalOutput,
 		BuildHeartbeatTask: heartbeatutil.BuildHeartbeatTask,
 		BuildHeartbeatMeta: func(source string, interval time.Duration, checklistPath string, checklistEmpty bool, extra map[string]any) map[string]any {
 			return heartbeatutil.BuildHeartbeatMeta(source, interval, checklistPath, checklistEmpty, nil, extra)

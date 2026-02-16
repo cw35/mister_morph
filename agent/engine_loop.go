@@ -254,16 +254,6 @@ func (e *Engine) runLoop(ctx context.Context, st *engineLoopState) (*Final, *Con
 					fields = append(fields, "tool_index", i, "tool_count", len(toolCalls))
 				}
 				log.Info("tool_call", fields...)
-				if log.Enabled(ctx, slog.LevelDebug) {
-					debugFields := []any{"step", step, "tool", tc.Name, "param_keys", sortedMapKeys(tc.Params)}
-					if len(toolCalls) > 1 {
-						debugFields = append(debugFields, "tool_index", i, "tool_count", len(toolCalls))
-					}
-					if e.logOpts.IncludeToolParams {
-						debugFields = append(debugFields, "params", paramsAsJSON(tc.Params, e.logOpts.MaxJSONBytes, e.logOpts.MaxStringValueChars, e.logOpts.RedactKeys))
-					}
-					log.Debug("tool_call_params", debugFields...)
-				}
 				if e.logOpts.IncludeToolParams {
 					infoFields := []any{"step", step, "tool", tc.Name,
 						"params", paramsAsJSON(tc.Params, e.logOpts.MaxJSONBytes, e.logOpts.MaxStringValueChars, e.logOpts.RedactKeys),
@@ -280,13 +270,6 @@ func (e *Engine) runLoop(ctx context.Context, st *engineLoopState) (*Final, *Con
 						thoughtFields = append(thoughtFields, "tool_index", i, "tool_count", len(toolCalls))
 					}
 					log.Info("tool_thought", thoughtFields...)
-				}
-				if e.logOpts.IncludeThoughts {
-					thoughtFields := []any{"step", step, "tool", tc.Name, "thought", thought}
-					if len(toolCalls) > 1 {
-						thoughtFields = append(thoughtFields, "tool_index", i, "tool_count", len(toolCalls))
-					}
-					log.Debug("tool_thought", thoughtFields...)
 				} else {
 					log.Debug("tool_thought_len", "step", step, "tool", tc.Name, "thought_len", len(tc.Thought))
 				}
