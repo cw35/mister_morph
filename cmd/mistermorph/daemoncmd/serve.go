@@ -20,6 +20,7 @@ import (
 	"github.com/quailyquaily/mistermorph/internal/llmutil"
 	"github.com/quailyquaily/mistermorph/internal/logutil"
 	"github.com/quailyquaily/mistermorph/internal/maepruntime"
+	"github.com/quailyquaily/mistermorph/internal/outputfmt"
 	"github.com/quailyquaily/mistermorph/internal/promptprofile"
 	"github.com/quailyquaily/mistermorph/internal/skillsutil"
 	"github.com/quailyquaily/mistermorph/internal/statepaths"
@@ -199,7 +200,7 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 							}
 						} else {
 							qt.heartbeatState.EndSuccess(finished)
-							out := heartbeatutil.FormatFinalOutput(final)
+							out := outputfmt.FormatFinalOutput(final)
 							if strings.TrimSpace(out) != "" {
 								logger.Info("heartbeat_summary", "message", out)
 							} else {

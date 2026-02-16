@@ -1,15 +1,12 @@
 package heartbeatutil
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/quailyquaily/mistermorph/agent"
 )
 
 const (
@@ -17,19 +14,6 @@ const (
 )
 
 var heartbeatHTMLComment = regexp.MustCompile(`(?s)<!--.*?-->`)
-
-func FormatFinalOutput(final *agent.Final) string {
-	if final == nil {
-		return ""
-	}
-	switch v := final.Output.(type) {
-	case string:
-		return strings.TrimSpace(v)
-	default:
-		b, _ := json.MarshalIndent(v, "", "  ")
-		return strings.TrimSpace(string(b))
-	}
-}
 
 func BuildHeartbeatTask(checklistPath string) (string, bool, error) {
 	checklist, empty, err := readHeartbeatChecklist(checklistPath)

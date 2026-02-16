@@ -357,8 +357,8 @@ func (api *telegramAPI) sendMessageMarkdownV2Reply(ctx context.Context, chatID i
 	if err == nil {
 		return nil
 	}
-	if !isTelegramMarkdownParseError(err) {
-		slog.Warn("failed to send with MarkdownV2", "error", err)
+	if isTelegramMarkdownParseError(err) {
+		slog.Warn("failed to send with MarkdownV2; retry escaped", "error", err)
 		escaped := escapeTelegramMarkdownV2(text)
 		err = api.sendMessageWithParseModeReply(ctx, chatID, escaped, disablePreview, "MarkdownV2", replyToMessageID)
 		if err == nil {
@@ -367,6 +367,8 @@ func (api *telegramAPI) sendMessageMarkdownV2Reply(ctx context.Context, chatID i
 		if !isTelegramMarkdownParseError(err) {
 			slog.Warn("again, failed to send escaped with MarkdownV2", "error", err)
 		}
+	} else {
+		slog.Warn("failed to send with MarkdownV2", "error", err)
 	}
 
 	slog.Warn("failed to send with MarkdownV2; fallback to plain text", "error", err)
