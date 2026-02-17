@@ -98,6 +98,7 @@ The following areas already have formal docs, so this file only links them:
 - Security / Guard: [`./security.md`](./security.md)
 - Skills system: [`./skills.md`](./skills.md)
 - MAEP protocol and implementation: [`./maep.md`](./maep.md), [`./maep_impl.md`](./maep_impl.md)
+- Telegram runtime behavior: [`./telegram.md`](./telegram.md)
 - Slack Socket Mode: [`./slack.md`](./slack.md)
 - Bus design and implementation: [`./bus.md`](./bus.md), [`./bus_impl.md`](./bus_impl.md)
 
@@ -119,23 +120,7 @@ Notes:
 - `integration.New(cfg)` builds a snapshot of effective runtime config at initialization time.
 - Code: `integration/runtime.go`, `integration/runtime_snapshot*.go`, `integration/channel_bots.go`
 
-### 5.2 Telegram Runtime (no standalone doc yet)
-
-```text
-getUpdates
-  -> command/filter/trigger decision
-  -> enqueue chat worker
-  -> runTelegramTask
-  -> bus outbound
-  -> telegram deliver
-```
-
-Notes:
-
-- Telegram currently has the richest runtime logic: commands, group trigger routing, sticky skills, chat history, memory updates, and optional MAEP collaboration.
-- Code: `internal/channelruntime/telegram/runtime_loop.go`, `internal/channelruntime/telegram/runtime_task.go`
-
-### 5.3 Memory Status
+### 5.2 Memory Status
 
 ```text
 telegram private user
@@ -189,5 +174,5 @@ Recommended reading order:
 1. `cmd/mistermorph/root.go` (entrypoint assembly)
 2. `integration/runtime.go` (embedding entrypoint)
 3. `agent/engine.go` + `agent/engine_loop.go` (execution core)
-4. `internal/channelruntime/telegram/runtime_loop.go` and `internal/channelruntime/slack/runtime.go` (channel flow)
+4. `internal/channelruntime/telegram/runtime.go`, `internal/channelruntime/telegram/runtime_task.go`, and `internal/channelruntime/slack/runtime.go` (channel flow)
 5. `internal/bus/*` and `internal/bus/adapters/*` (message bus and adapters)
