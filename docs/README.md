@@ -2,6 +2,7 @@
 
 ## Core Docs
 
+- [Architecture](./arch.md)
 - [Prompt System](./prompt.md)
 - [Tools](./tools.md)
 - [Security](./security.md)

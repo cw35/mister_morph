@@ -9,6 +9,7 @@ Decide whether this message should be handled by me according following rules:
 6. Return ONLY a JSON object with keys: addressed (bool), `confidence` (number 0..1), impulse (number 0..1), reason (string).
 example: {
   "addressed": true or false,
+  "wanna_interject": 0 ~ 1 float,
   "confidence": 0 ~ 1 float,
   "impulse": 0 ~ 1 float,
   "interject": 0 ~ 1 float,
