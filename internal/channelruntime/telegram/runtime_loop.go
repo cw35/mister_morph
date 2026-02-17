@@ -1382,6 +1382,7 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 								"wanna_interject", dec.Addressing.WannaInterject,
 								"interject", dec.Addressing.Interject,
 								"impulse", dec.Addressing.Impulse,
+								"is_lightweight", dec.Addressing.IsLightweight,
 								"reason", dec.Reason,
 							)
 						} else {
@@ -1407,6 +1408,7 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 						"wanna_interject", dec.Addressing.WannaInterject,
 						"interject", dec.Addressing.Interject,
 						"impulse", dec.Addressing.Impulse,
+						"is_lightweight", dec.Addressing.IsLightweight,
 						"quote_reply", quoteReply,
 					)
 					text = strings.TrimSpace(rawText)

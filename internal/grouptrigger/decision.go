@@ -21,6 +21,7 @@ type Addressing struct {
 	WannaInterject bool
 	Interject      float64
 	Impulse        float64
+	IsLightweight  bool
 	Reason         string
 }
 

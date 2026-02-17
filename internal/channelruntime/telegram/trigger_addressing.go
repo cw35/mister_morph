@@ -20,6 +20,7 @@ type telegramAddressingLLMOutput struct {
 	WannaInterject telegramWannaInterjectDecision `json:"wanna_interject"`
 	Interject      float64                        `json:"interject"`
 	Impulse        float64                        `json:"impulse"`
+	IsLightweight  bool                           `json:"is_lightweight"`
 	Reason         string                         `json:"reason"`
 }
 
@@ -134,6 +135,7 @@ func addressingDecisionViaLLM(
 		WannaInterject: bool(out.WannaInterject),
 		Interject:      clampAddressing01(out.Interject),
 		Impulse:        clampAddressing01(out.Impulse),
+		IsLightweight:  out.IsLightweight,
 		Reason:         strings.TrimSpace(out.Reason),
 	}
 	return addressing, true, nil
