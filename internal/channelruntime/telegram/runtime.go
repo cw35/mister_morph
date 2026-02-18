@@ -31,6 +31,7 @@ import (
 	"github.com/quailyquaily/mistermorph/llm"
 	"github.com/quailyquaily/mistermorph/maep"
 	"github.com/quailyquaily/mistermorph/memory"
+	telegramtools "github.com/quailyquaily/mistermorph/tools/telegram"
 )
 
 type telegramJob struct {
@@ -1360,7 +1361,21 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 					mu.Lock()
 					historySnapshot := append([]chathistory.ChatHistoryItem(nil), history[chatID]...)
 					mu.Unlock()
-					dec, ok, decErr := groupTriggerDecision(context.Background(), client, model, msg, botUser, botID, groupTriggerMode, addressingLLMTimeout, addressingConfidenceThreshold, addressingInterjectThreshold, historySnapshot)
+					var addressingReactionTool *telegramtools.ReactTool
+					if api != nil && msg != nil && msg.MessageID > 0 {
+						addressingReactionTool = telegramtools.NewReactTool(newTelegramToolAPI(api), chatID, msg.MessageID, allowed)
+					}
+					dec, ok, decErr := groupTriggerDecision(context.Background(), client, model, msg, botUser, botID, groupTriggerMode, addressingLLMTimeout, addressingConfidenceThreshold, addressingInterjectThreshold, historySnapshot, addressingReactionTool)
+					if addressingReactionTool != nil {
+						if reaction := addressingReactionTool.LastReaction(); reaction != nil {
+							logger.Info("telegram_group_addressing_reaction_applied",
+								"chat_id", reaction.ChatID,
+								"message_id", reaction.MessageID,
+								"emoji", reaction.Emoji,
+								"source", reaction.Source,
+							)
+						}
+					}
 					if decErr != nil {
 						logger.Warn("telegram_addressing_llm_error",
 							"chat_id", chatID,

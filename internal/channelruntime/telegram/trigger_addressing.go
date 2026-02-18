@@ -12,6 +12,7 @@ import (
 	"github.com/quailyquaily/mistermorph/internal/jsonutil"
 	"github.com/quailyquaily/mistermorph/internal/llminspect"
 	"github.com/quailyquaily/mistermorph/llm"
+	"github.com/quailyquaily/mistermorph/tools"
 )
 
 type telegramAddressingLLMOutput struct {
@@ -76,6 +77,7 @@ func addressingDecisionViaLLM(
 	msg *telegramMessage,
 	text string,
 	history []chathistory.ChatHistoryItem,
+	addressingTool tools.Tool,
 ) (grouptrigger.Addressing, bool, error) {
 	if ctx == nil || client == nil {
 		return grouptrigger.Addressing{}, false, nil
@@ -107,26 +109,63 @@ func addressingDecisionViaLLM(
 		return grouptrigger.Addressing{}, false, fmt.Errorf("render addressing prompts: %w", err)
 	}
 
-	res, err := client.Chat(llminspect.WithModelScene(ctx, "telegram.addressing_decision"), llm.Request{
-		Model:     model,
-		ForceJSON: true,
-		Messages: []llm.Message{
-			{Role: "system", Content: sys},
-			{Role: "user", Content: user},
-		},
-	})
-	if err != nil {
-		return grouptrigger.Addressing{}, false, err
+	messages := []llm.Message{
+		{Role: "system", Content: sys},
+		{Role: "user", Content: user},
+	}
+	var llmTools []llm.Tool
+	if t := llmToolFromTool(addressingTool); t != nil {
+		llmTools = append(llmTools, *t)
 	}
 
-	raw := strings.TrimSpace(res.Text)
-	if raw == "" {
-		return grouptrigger.Addressing{}, false, fmt.Errorf("empty addressing_llm response")
-	}
-
+	const maxToolRounds = 3
 	var out telegramAddressingLLMOutput
-	if err := jsonutil.DecodeWithFallback(raw, &out); err != nil {
-		return grouptrigger.Addressing{}, false, fmt.Errorf("invalid addressing_llm json")
+	for round := 0; ; round++ {
+		res, err := client.Chat(llminspect.WithModelScene(ctx, "telegram.addressing_decision"), llm.Request{
+			Model:     model,
+			ForceJSON: true,
+			Messages:  messages,
+			Tools:     llmTools,
+		})
+		if err != nil {
+			return grouptrigger.Addressing{}, false, err
+		}
+
+		if len(res.ToolCalls) > 0 {
+			if round >= maxToolRounds {
+				return grouptrigger.Addressing{}, false, fmt.Errorf("addressing_llm exceeded tool-call rounds")
+			}
+			messages = append(messages, llm.Message{
+				Role:      "assistant",
+				Content:   strings.TrimSpace(res.Text),
+				ToolCalls: res.ToolCalls,
+			})
+			for _, tc := range res.ToolCalls {
+				observation := executeAddressingToolCall(ctx, addressingTool, tc)
+				if strings.TrimSpace(tc.ID) != "" {
+					messages = append(messages, llm.Message{
+						Role:       "tool",
+						ToolCallID: tc.ID,
+						Content:    observation,
+					})
+					continue
+				}
+				messages = append(messages, llm.Message{
+					Role:    "user",
+					Content: fmt.Sprintf("Tool Result (%s):\n%s", strings.TrimSpace(tc.Name), observation),
+				})
+			}
+			continue
+		}
+
+		raw := strings.TrimSpace(res.Text)
+		if raw == "" {
+			return grouptrigger.Addressing{}, false, fmt.Errorf("empty addressing_llm response")
+		}
+		if err := jsonutil.DecodeWithFallback(raw, &out); err != nil {
+			return grouptrigger.Addressing{}, false, fmt.Errorf("invalid addressing_llm json")
+		}
+		break
 	}
 
 	addressing := grouptrigger.Addressing{
@@ -139,6 +178,43 @@ func addressingDecisionViaLLM(
 		Reason:         strings.TrimSpace(out.Reason),
 	}
 	return addressing, true, nil
+}
+
+func llmToolFromTool(t tools.Tool) *llm.Tool {
+	if t == nil {
+		return nil
+	}
+	name := strings.TrimSpace(t.Name())
+	if name == "" {
+		return nil
+	}
+	return &llm.Tool{
+		Name:           name,
+		Description:    strings.TrimSpace(t.Description()),
+		ParametersJSON: strings.TrimSpace(t.ParameterSchema()),
+	}
+}
+
+func executeAddressingToolCall(ctx context.Context, t tools.Tool, call llm.ToolCall) string {
+	name := strings.TrimSpace(call.Name)
+	if t == nil || !strings.EqualFold(strings.TrimSpace(t.Name()), name) {
+		if name == "" {
+			name = "<empty>"
+		}
+		return fmt.Sprintf("error: tool '%s' not found", name)
+	}
+	observation, err := t.Execute(ctx, call.Arguments)
+	if err != nil {
+		if strings.TrimSpace(observation) == "" {
+			observation = fmt.Sprintf("error: %s", err.Error())
+		} else {
+			observation = fmt.Sprintf("%s\n\nerror: %s", observation, err.Error())
+		}
+	}
+	if strings.TrimSpace(observation) == "" {
+		return "ok"
+	}
+	return observation
 }
 
 func clampAddressing01(v float64) float64 {

@@ -8,6 +8,7 @@ import (
 	"github.com/quailyquaily/mistermorph/internal/chathistory"
 	"github.com/quailyquaily/mistermorph/internal/grouptrigger"
 	"github.com/quailyquaily/mistermorph/llm"
+	"github.com/quailyquaily/mistermorph/tools"
 )
 
 type telegramGroupTriggerDecision = grouptrigger.Decision
@@ -37,6 +38,7 @@ func groupTriggerDecision(
 	addressingConfidenceThreshold float64,
 	addressingInterjectThreshold float64,
 	history []chathistory.ChatHistoryItem,
+	addressingReactionTool tools.Tool,
 ) (telegramGroupTriggerDecision, bool, error) {
 	if msg == nil {
 		return telegramGroupTriggerDecision{}, false, nil
@@ -52,7 +54,7 @@ func groupTriggerDecision(
 		AddressingFallbackReason: mode,
 		AddressingTimeout:        addressingLLMTimeout,
 		Addressing: func(addrCtx context.Context) (grouptrigger.Addressing, bool, error) {
-			return addressingDecisionViaLLM(addrCtx, client, model, msg, text, history)
+			return addressingDecisionViaLLM(addrCtx, client, model, msg, text, history, addressingReactionTool)
 		},
 	})
 }
