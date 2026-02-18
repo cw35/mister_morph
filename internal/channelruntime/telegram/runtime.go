@@ -791,14 +791,7 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 	if hbEnabled && hbInterval > 0 {
 		const heartbeatChatID int64 = 0
 		go func() {
-			ticker := time.NewTicker(hbInterval)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-pollCtx.Done():
-					return
-				case <-ticker.C:
-				}
+			runHeartbeatTick := func() {
 				result := heartbeatutil.Tick(
 					heartbeatState,
 					func() (string, bool, error) {
@@ -875,6 +868,26 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 					broadcastSystemWarnings()
 				case heartbeatutil.TickSkipped:
 					logger.Debug("heartbeat_skip", "source", "telegram", "reason", result.SkipReason)
+				}
+			}
+
+			initialTimer := time.NewTimer(15 * time.Second)
+			defer initialTimer.Stop()
+			select {
+			case <-pollCtx.Done():
+				return
+			case <-initialTimer.C:
+			}
+			runHeartbeatTick()
+
+			ticker := time.NewTicker(hbInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-pollCtx.Done():
+					return
+				case <-ticker.C:
+					runHeartbeatTick()
 				}
 			}
 		}()

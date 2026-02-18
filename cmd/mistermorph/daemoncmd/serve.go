@@ -222,14 +222,7 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 			hbChecklist := statepaths.HeartbeatChecklistPath()
 			if hbEnabled && hbInterval > 0 {
 				go func() {
-					ticker := time.NewTicker(hbInterval)
-					defer ticker.Stop()
-					for {
-						select {
-						case <-cmd.Context().Done():
-							return
-						case <-ticker.C:
-						}
+					runHeartbeatTick := func() {
 						result := heartbeatutil.Tick(
 							hbState,
 							func() (string, bool, error) {
@@ -255,6 +248,26 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 							}
 						case heartbeatutil.TickSkipped:
 							logger.Debug("heartbeat_skip", "reason", result.SkipReason)
+						}
+					}
+
+					initialTimer := time.NewTimer(15 * time.Second)
+					defer initialTimer.Stop()
+					select {
+					case <-cmd.Context().Done():
+						return
+					case <-initialTimer.C:
+					}
+					runHeartbeatTick()
+
+					ticker := time.NewTicker(hbInterval)
+					defer ticker.Stop()
+					for {
+						select {
+						case <-cmd.Context().Done():
+							return
+						case <-ticker.C:
+							runHeartbeatTick()
 						}
 					}
 				}()
