@@ -1,8 +1,9 @@
-import { createApp, computed, onMounted, reactive, ref } from "vue";
+import { createApp, computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { createRouter, createWebHistory, useRoute, useRouter } from "vue-router";
 import { QuailUI } from "quail-ui";
-import "quail-ui/dist/style.css";
+import "quail-ui/dist/index.css";
 import "./styles.css";
+import "./override.css";
 
 const AUTH_STORAGE_KEY = "mistermorph_admin_auth_v1";
 
@@ -126,6 +127,31 @@ function formatTime(ts) {
   return d.toLocaleString();
 }
 
+function formatRemainingUntil(ts) {
+  if (!ts) {
+    return "unknown";
+  }
+  const ms = new Date(ts).getTime() - Date.now();
+  if (!Number.isFinite(ms)) {
+    return "invalid";
+  }
+  if (ms <= 0) {
+    return "expired";
+  }
+  const totalMinutes = Math.floor(ms / 60000);
+  if (totalMinutes < 60) {
+    return `${totalMinutes}m left`;
+  }
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours < 24) {
+    return `${hours}h ${minutes}m left`;
+  }
+  const days = Math.floor(hours / 24);
+  const hourPart = hours % 24;
+  return `${days}d ${hourPart}h left`;
+}
+
 const LoginView = {
   setup() {
     const router = useRouter();
@@ -165,7 +191,6 @@ const LoginView = {
   template: `
     <section class="login-box">
       <h1 class="login-title">MisterMorph Admin</h1>
-      <p class="muted">输入管理密码登录。</p>
       <div class="stack">
         <QInput
           v-model="password"
@@ -212,15 +237,26 @@ const DashboardView = {
   },
   template: `
     <section>
-      <h2 class="title">Dashboard</h2>
-      <p class="muted">只保留当前运行态信息，不做近期任务统计。</p>
+      <h2 class="title">概览</h2>
       <QProgress v-if="loading" :infinite="true" />
       <QFence v-if="err" type="danger" icon="QIconCloseCircle" :text="err" />
-      <div class="fence-grid">
-        <QFence icon="QIconInfoCircle" :text="'Version: ' + overview.version" />
-        <QFence icon="QIconClockRewind" :text="'Started: ' + formatTime(overview.started_at)" />
-        <QFence icon="QIconSpeedoMeter" :text="'Uptime: ' + overview.uptime_sec + 's'" />
-        <QFence icon="QIconCheckCircle" :text="'Health: ' + overview.health" />
+      <div class="stat-list">
+        <div class="stat-item">
+          <span class="stat-key">Version</span>
+          <code class="stat-value">{{ overview.version }}</code>
+        </div>
+        <div class="stat-item">
+          <span class="stat-key">Started</span>
+          <code class="stat-value">{{ formatTime(overview.started_at) }}</code>
+        </div>
+        <div class="stat-item">
+          <span class="stat-key">Uptime</span>
+          <code class="stat-value">{{ overview.uptime_sec }}s</code>
+        </div>
+        <div class="stat-item">
+          <span class="stat-key">Health</span>
+          <code class="stat-value">{{ overview.health }}</code>
+        </div>
       </div>
       <div class="toolbar">
         <QButton class="outlined" @click="load" :loading="loading">刷新</QButton>
@@ -280,7 +316,8 @@ const TasksView = {
 
     function summary(item) {
       const source = item.source || "daemon";
-      return `${item.id} | ${source} | ${item.status} | ${item.model || "-"} | ${formatTime(item.created_at)}`;
+      const status = (item.status || "unknown").toUpperCase();
+      return `[${status}] ${item.id} | ${source} | ${item.model || "-"} | ${formatTime(item.created_at)}`;
     }
 
     onMounted(load);
@@ -289,7 +326,6 @@ const TasksView = {
   template: `
     <section>
       <h2 class="title">当前任务</h2>
-      <p class="muted">显示当前连接 daemon 的运行中任务视图（内存态）。</p>
       <div class="toolbar wrap">
         <div class="tool-item">
           <QDropdownMenu
@@ -302,16 +338,16 @@ const TasksView = {
         <div class="tool-item">
           <QInput v-model="limitText" inputType="number" placeholder="limit" />
         </div>
-        <QButton class="outlined" :loading="loading" @click="load">刷新列表</QButton>
+        <QButton class="outlined" :loading="loading" @click="load">刷新</QButton>
       </div>
       <QProgress v-if="loading" :infinite="true" />
       <QFence v-if="err" type="danger" icon="QIconCloseCircle" :text="err" />
       <div class="stack">
         <div v-for="item in items" :key="item.id" class="task-row">
-          <QFence icon="QIconCpuChip" :text="summary(item)" />
-          <QButton class="plain" @click="openTask(item.id)">查看详情</QButton>
+          <code class="task-line">{{ summary(item) }}</code>
+          <QButton class="plain" @click="openTask(item.id)">详情</QButton>
         </div>
-        <QFence v-if="items.length === 0 && !loading" icon="QIconInbox" text="没有可显示任务" />
+        <p v-if="items.length === 0 && !loading" class="muted">无任务</p>
       </div>
     </section>
   `,
@@ -351,7 +387,7 @@ const TaskDetailView = {
     <section>
       <h2 class="title">任务详情</h2>
       <div class="toolbar">
-        <QButton class="outlined" @click="back">返回任务列表</QButton>
+        <QButton class="outlined" @click="back">返回</QButton>
         <QButton class="plain" :loading="loading" @click="load">刷新</QButton>
       </div>
       <QProgress v-if="loading" :infinite="true" />
@@ -438,8 +474,7 @@ const ContactsFilesView = {
   },
   template: `
     <section>
-      <h2 class="title">联系人文件</h2>
-      <p class="muted">只编辑 ACTIVE.md / INACTIVE.md 文件。</p>
+      <h2 class="title">联系人</h2>
       <div class="toolbar wrap">
         <div class="tool-item">
           <QDropdownMenu
@@ -449,7 +484,7 @@ const ContactsFilesView = {
             @change="onFileChange"
           />
         </div>
-        <QButton class="primary" :loading="saving" @click="save">保存文件</QButton>
+        <QButton class="primary" :loading="saving" @click="save">保存</QButton>
       </div>
       <QProgress v-if="loading" :infinite="true" />
       <QFence v-if="err" type="danger" icon="QIconCloseCircle" :text="err" />
@@ -480,24 +515,31 @@ const SettingsView = {
       }
     }
 
-    function checkText(c) {
-      return `${c.id} | ok=${c.ok ? "true" : "false"}${c.detail ? " | " + c.detail : ""}`;
+    function checkStatus(c) {
+      return c && c.ok ? "PASS" : "FAIL";
+    }
+
+    function checkClass(c) {
+      return c && c.ok ? "check-status check-pass" : "check-status check-fail";
     }
 
     onMounted(load);
-    return { loading, err, configJSON, checks, load, checkText };
+    return { loading, err, configJSON, checks, load, checkStatus, checkClass };
   },
   template: `
     <section>
-      <h2 class="title">配置与诊断</h2>
-      <p class="muted">只读脱敏配置 + 路径/文件/健康检查。</p>
+      <h2 class="title">系统</h2>
       <div class="toolbar">
         <QButton class="outlined" :loading="loading" @click="load">刷新</QButton>
       </div>
       <QProgress v-if="loading" :infinite="true" />
       <QFence v-if="err" type="danger" icon="QIconCloseCircle" :text="err" />
-      <div class="stack">
-        <QFence v-for="(item, idx) in checks" :key="idx" icon="QIconInfoSquare" :text="checkText(item)" />
+      <div class="check-list">
+        <div v-for="(item, idx) in checks" :key="idx" class="check-item">
+          <code :class="checkClass(item)">{{ checkStatus(item) }}</code>
+          <code class="check-id">{{ item.id }}</code>
+          <span v-if="item.detail" class="muted check-detail">{{ item.detail }}</span>
+        </div>
       </div>
       <QTextarea :modelValue="configJSON" :rows="18" :disabled="true" />
     </section>
@@ -520,10 +562,10 @@ const router = createRouter({
 });
 
 const navItems = [
-  { id: "/dashboard", title: "Dashboard" },
-  { id: "/tasks", title: "当前任务" },
-  { id: "/contacts-files", title: "联系人文件" },
-  { id: "/settings", title: "配置与诊断" },
+  { id: "/dashboard", title: "概览" },
+  { id: "/tasks", title: "任务" },
+  { id: "/contacts-files", title: "联系人" },
+  { id: "/settings", title: "配置" },
 ];
 
 const App = {
@@ -531,6 +573,40 @@ const App = {
     const router = useRouter();
     const route = useRoute();
     const inLogin = computed(() => route.path === "/login");
+    const mobileNavOpen = ref(false);
+    const mobileMode = ref(window.innerWidth <= 980);
+    const nowTick = ref(Date.now());
+
+    function syncViewport() {
+      mobileMode.value = window.innerWidth <= 980;
+      if (!mobileMode.value) {
+        mobileNavOpen.value = false;
+      }
+    }
+
+    const tickTimer = setInterval(() => {
+      nowTick.value = Date.now();
+    }, 30000);
+    onMounted(() => {
+      syncViewport();
+      window.addEventListener("resize", syncViewport);
+    });
+    onUnmounted(() => {
+      clearInterval(tickTimer);
+      window.removeEventListener("resize", syncViewport);
+    });
+
+    watch(
+      () => route.fullPath,
+      () => {
+        mobileNavOpen.value = false;
+      }
+    );
+
+    const sessionLabel = computed(() => {
+      void nowTick.value;
+      return formatRemainingUntil(authState.expiresAt);
+    });
 
     async function logout() {
       try {
@@ -546,9 +622,18 @@ const App = {
       if (!item || typeof item.id !== "string" || !item.id) {
         return;
       }
+      mobileNavOpen.value = false;
       if (route.path !== item.id) {
         router.push(item.id);
       }
+    }
+
+    function openMobileNav() {
+      mobileNavOpen.value = true;
+    }
+
+    function closeMobileNav() {
+      mobileNavOpen.value = false;
     }
 
     function isActive(item) {
@@ -561,7 +646,19 @@ const App = {
       return route.path === item.id;
     }
 
-    return { inLogin, navItems, goTo, isActive, logout, authState };
+    return {
+      inLogin,
+      navItems,
+      goTo,
+      isActive,
+      openMobileNav,
+      closeMobileNav,
+      logout,
+      authState,
+      sessionLabel,
+      mobileMode,
+      mobileNavOpen,
+    };
   },
   template: `
     <div>
@@ -570,23 +667,26 @@ const App = {
       </section>
       <section v-else class="app-shell">
         <header class="topbar">
-          <div class="brand">
-            MisterMorph Admin
-            <small>Base: <code>${BASE_PATH}</code></small>
+          <div class="topbar-brand">
+            <QButton v-if="mobileMode" class="plain mobile-nav-trigger" @click="openMobileNav">
+              <QIconMenu />
+            </QButton>
+            <div class="brand">
+              <h1 class="brand-title">MISTERMORPH / ADMIN</h1>
+            </div>
           </div>
           <div class="topbar-actions">
-            <span class="muted topbar-account">account: <code>{{ authState.account }}</code></span>
+            <span class="session-inline">TTL {{ sessionLabel }}</span>
             <QButton class="outlined" @click="logout">退出</QButton>
           </div>
         </header>
-        <div class="workspace">
-          <aside class="sidebar">
-            <p class="sidebar-title">导航</p>
+        <div :class="mobileMode ? 'workspace is-mobile' : 'workspace'">
+          <aside v-if="!mobileMode" class="sidebar">
             <div class="sidebar-nav">
               <QButton
                 v-for="item in navItems"
                 :key="item.id"
-                :class="isActive(item) ? 'primary' : 'plain'"
+                :class="isActive(item) ? 'plain nav-btn nav-btn-active' : 'plain nav-btn'"
                 @click="goTo(item)"
               >
                 {{ item.title }}
@@ -597,6 +697,28 @@ const App = {
             <RouterView />
           </main>
         </div>
+        <QDrawer
+          v-if="mobileMode"
+          v-model="mobileNavOpen"
+          title="导航"
+          placement="left"
+          size="272px"
+          :showMask="true"
+          :maskClosable="true"
+          :lockScroll="true"
+          @close="closeMobileNav"
+        >
+          <div class="sidebar-nav mobile-drawer-nav">
+            <QButton
+              v-for="item in navItems"
+              :key="'drawer-' + item.id"
+              :class="isActive(item) ? 'plain nav-btn nav-btn-active' : 'plain nav-btn'"
+              @click="goTo(item)"
+            >
+              {{ item.title }}
+            </QButton>
+          </div>
+        </QDrawer>
       </section>
     </div>
   `,

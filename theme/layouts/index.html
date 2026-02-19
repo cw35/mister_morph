@@ -1,0 +1,317 @@
+{{ define "main" }}
+  {{ $home := .Site.Home }}
+  <header class="site-header">
+    <div class="container nav-shell">
+      <a class="nav-brand-stack" href="{{ .Site.Home.RelPermalink }}" aria-label="{{ .Site.Title }}">
+        <span class="brand-mark" aria-hidden="true">
+          <svg class="brand-logo" viewBox="0 0 24 24" role="presentation">
+            <path class="logo-spy-hat" d="M3 11h18"></path>
+            <path class="logo-spy-hat" d="M5 11v-4a3 3 0 0 1 3 -3h8a3 3 0 0 1 3 3v4"></path>
+            <path class="logo-spy-eye" d="M7 17m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"></path>
+            <path class="logo-spy-eye" d="M17 17m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"></path>
+            <path class="logo-spy-bridge" d="M10 17h4"></path>
+          </svg>
+        </span>
+        <span class="brand-name nav-brand-name">{{ .Site.Title }}</span>
+      </a>
+      <div class="nav-actions">
+        <button class="nav-icon-btn theme-toggle" type="button" data-theme-toggle aria-label="{{ i18n "theme_toggle_label" }}" title="{{ i18n "theme_toggle_label" }}" aria-pressed="false">
+          <svg class="nav-icon icon-theme-dark" viewBox="0 0 24 24" role="presentation" aria-hidden="true">
+            <path d="M12 3a7 7 0 1 0 9 9a8 8 0 1 1 -9 -9"></path>
+          </svg>
+          <svg class="nav-icon icon-theme-light" viewBox="0 0 24 24" role="presentation" aria-hidden="true">
+            <path d="M12 3v2"></path>
+            <path d="M12 19v2"></path>
+            <path d="M3 12h2"></path>
+            <path d="M19 12h2"></path>
+            <path d="M5.6 5.6l1.4 1.4"></path>
+            <path d="M17 17l1.4 1.4"></path>
+            <path d="M5.6 18.4l1.4 -1.4"></path>
+            <path d="M17 7l1.4 -1.4"></path>
+            <path d="M12 16a4 4 0 1 0 0 -8a4 4 0 0 0 0 8"></path>
+          </svg>
+        </button>
+        <details class="lang-menu" aria-label="{{ i18n "lang_label" }}">
+          <summary class="nav-icon-btn lang-menu-trigger" aria-label="{{ i18n "lang_label" }}" title="{{ i18n "lang_label" }}">
+            <span class="lang-menu-mark" aria-hidden="true">
+              <span class="lang-mark-zh">文</span>
+              <span class="lang-mark-en">A</span>
+            </span>
+          </summary>
+          <div class="lang-menu-list">
+            {{ $menuOrder := slice "en" "ja" "zh" }}
+            {{ range $code := $menuOrder }}
+              {{ range where $home.AllTranslations "Language.Lang" $code }}
+                <a class="lang-menu-item{{ if eq .Language.Lang $.Language.Lang }} is-active{{ end }}" href="{{ .RelPermalink }}">{{ .Language.LanguageName }}</a>
+              {{ end }}
+            {{ end }}
+          </div>
+        </details>
+      </div>
+    </div>
+  </header>
+
+  <main id="home">
+    <section class="hero container">
+      <div class="hero-content">
+        <p class="hero-kicker">{{ .Params.hero_kicker }}</p>
+        <h1>{{ .Params.hero_title }}</h1>
+        <p class="hero-lead">{{ .Params.hero_lead }}</p>
+        {{ $primaryURL := .Params.cta_primary_url | default .Site.Params.githubURL }}
+        {{ $secondaryURL := .Params.cta_secondary_url | default .Site.Params.docsURL }}
+        {{ $primaryExternal := or (hasPrefix $primaryURL "http://") (hasPrefix $primaryURL "https://") }}
+        {{ $secondaryExternal := or (hasPrefix $secondaryURL "http://") (hasPrefix $secondaryURL "https://") }}
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="{{ $primaryURL }}"{{ if $primaryExternal }} target="_blank" rel="noopener noreferrer"{{ end }}>{{ .Params.cta_primary }}</a>
+          <a class="btn btn-ghost" href="{{ $secondaryURL }}"{{ if $secondaryExternal }} target="_blank" rel="noopener noreferrer"{{ end }}>{{ .Params.cta_secondary }}</a>
+          <a class="btn hero-github-btn" href="{{ .Site.Params.githubURL }}" target="_blank" rel="noopener noreferrer" aria-label="{{ i18n "nav_github" }}" title="{{ i18n "nav_github" }}">
+            <svg class="icon-github" viewBox="0 0 24 24" role="presentation" aria-hidden="true">
+              <path d="M9 19c-5 1.5-5-2.5-7-3"></path>
+              <path d="M15 22v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 19 4.77a5.07 5.07 0 0 0-.09-3.77S17.73.65 15 2.48a13.38 13.38 0 0 0-6 0C6.27.65 5.09 1 5.09 1a5.07 5.07 0 0 0-.09 3.77A5.44 5.44 0 0 0 3.5 8.53c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+            </svg>
+          </a>
+        </div>
+        <ul class="metric-grid reveal-group">
+          {{ range .Params.metrics }}
+            <li class="metric-card reveal">
+              <span class="metric-value">{{ .value }}</span>
+              <span class="metric-label">{{ .label }}</span>
+            </li>
+          {{ end }}
+        </ul>
+      </div>
+
+      <div class="hero-visual reveal" id="hero-visual">
+        <div class="terminal-shell">
+          <div class="terminal-head">
+            <div class="mac-window-controls" aria-hidden="true">
+              <span class="mac-btn mac-btn-close"></span>
+              <span class="mac-btn mac-btn-min"></span>
+              <span class="mac-btn mac-btn-max"></span>
+            </div>
+            <button
+              class="terminal-copy-btn"
+              type="button"
+              data-terminal-copy
+              data-copy-label="{{ i18n "terminal_copy" }}"
+              data-copied-label="{{ i18n "terminal_copied" }}"
+              aria-label="{{ i18n "terminal_copy" }}"
+            >
+              {{ i18n "terminal_copy" }}
+            </button>
+          </div>
+          <pre><code>{{ .Params.terminal }}</code></pre>
+        </div>
+        <div class="pulse-ring ring-1" aria-hidden="true"></div>
+        <div class="pulse-ring ring-2" aria-hidden="true"></div>
+      </div>
+    </section>
+
+    <section class="section container reveal">
+      <div class="section-heading">
+        <p>{{ i18n "features_kicker" }}</p>
+        <h2>{{ .Params.features_title }}</h2>
+      </div>
+      <div class="feature-grid">
+        {{ range .Params.features }}
+          <article class="feature-card reveal">
+            <h3>{{ .title }}</h3>
+            <p>{{ .desc }}</p>
+          </article>
+        {{ end }}
+      </div>
+    </section>
+
+    <section class="section container reveal">
+      <div class="section-heading">
+        <p>{{ i18n "workflow_kicker" }}</p>
+        <h2>{{ .Params.workflow_title }}</h2>
+      </div>
+      <ol class="workflow">
+        {{ range $idx, $step := .Params.workflow_steps }}
+          <li class="workflow-step reveal" style="--step-index: {{ add $idx 1 }}">
+            <span class="step-number">{{ printf "%02d" (add $idx 1) }}</span>
+            <p>{{ $step }}</p>
+          </li>
+        {{ end }}
+      </ol>
+    </section>
+
+    {{ range .Params.docs_sections }}
+      <section class="section container reveal docs-chapter docs-chapter-{{ .kind }}">
+        <div class="section-heading docs-heading">
+          <div class="docs-meta-row">
+            {{ if .link_url }}
+              <p class="docs-meta-inline">
+                <span aria-hidden="true">[</span>
+                <span>{{ .tag }}</span>
+                <span aria-hidden="true">//</span>
+                <a class="docs-meta-file-link" href="{{ .link_url }}" target="_blank" rel="noopener noreferrer">
+                  <span>{{ .link_label }}</span>
+                  <span class="docs-link-arrow" aria-hidden="true">↗</span>
+                </a>
+                <span aria-hidden="true">]</span>
+              </p>
+            {{ else }}
+              <p class="docs-meta-inline">[ {{ .tag }} ]</p>
+            {{ end }}
+          </div>
+          <h2>{{ .title }}</h2>
+        </div>
+
+        {{ if eq .kind "security" }}
+          <div class="docs-layout docs-layout-security">
+            <article class="track-card reveal security-main-card">
+              <p class="card-eyebrow">{{ .points_title }}</p>
+              <ul class="track-points">
+                {{ range .points }}
+                  <li>{{ . }}</li>
+                {{ end }}
+              </ul>
+            </article>
+            <article class="track-card reveal security-flow-card">
+              <p class="card-eyebrow">{{ .flow_title }}</p>
+              <div class="security-chain-track">
+                {{ $flowLen := len .flow }}
+                {{ range $idx, $flow := .flow }}
+                  <article class="security-chain-node">
+                    <p class="security-chain-name">{{ $flow.title }}</p>
+                    <p class="security-chain-desc">{{ $flow.desc }}</p>
+                  </article>
+                  {{ if lt (add $idx 1) $flowLen }}
+                    <div class="security-chain-link" aria-hidden="true">
+                      <span></span>
+                    </div>
+                  {{ end }}
+                {{ end }}
+              </div>
+            </article>
+          </div>
+        {{ else if eq .kind "maep" }}
+          <div class="docs-layout docs-layout-maep">
+            <article class="track-card reveal maep-network-card">
+              <p class="card-eyebrow">{{ .sequence_title }}</p>
+              <div class="maep-exchange-map">
+                <div class="maep-hub-node">
+                  <span class="maep-hub-title">{{ .hub_label }}</span>
+                </div>
+                <div class="maep-peer-stack">
+                  {{ if gt (len .agents) 0 }}
+                    {{ range .agents }}
+                      <article class="maep-peer-row">
+                        <div class="maep-peer-wire" aria-hidden="true">
+                          <span class="maep-peer-packet packet-out"></span>
+                          <span class="maep-peer-packet packet-in"></span>
+                        </div>
+                        <div class="maep-peer-bubble">
+                          <span class="maep-peer-title">{{ .name }}</span>
+                          <p>{{ default "Peer Agent" .role }}</p>
+                        </div>
+                      </article>
+                    {{ end }}
+                  {{ else }}
+                    {{ range .sequence }}
+                      <article class="maep-peer-row">
+                        <div class="maep-peer-wire" aria-hidden="true">
+                          <span class="maep-peer-packet packet-out"></span>
+                          <span class="maep-peer-packet packet-in"></span>
+                        </div>
+                        <div class="maep-peer-bubble">
+                          <span class="maep-peer-title">{{ .title }}</span>
+                          <p>{{ default "Peer Agent" .desc }}</p>
+                        </div>
+                      </article>
+                    {{ end }}
+                  {{ end }}
+                </div>
+              </div>
+            </article>
+            <article class="track-card reveal maep-rules-card">
+              <p class="card-eyebrow">{{ .points_title }}</p>
+              <div class="maep-rules-layout">
+                <section class="maep-rules-group">
+                  <p class="maep-rules-label">{{ default "Protocol" .protocol_block_title }}</p>
+                  <ul class="maep-protocol-list">
+                    {{ range .sequence }}
+                      <li>
+                        <span class="maep-protocol-tag">[ {{ .title }} ]</span>
+                        <p>{{ .desc }}</p>
+                      </li>
+                    {{ end }}
+                  </ul>
+                </section>
+                <section class="maep-rules-group">
+                  <p class="maep-rules-label">{{ default .points_title .constraints_block_title }}</p>
+                  <ul class="track-points maep-constraints-list">
+                    {{ range .points }}
+                      <li>{{ . }}</li>
+                    {{ end }}
+                  </ul>
+                </section>
+              </div>
+            </article>
+          </div>
+        {{ else if eq .kind "bus" }}
+          <div class="docs-layout docs-layout-bus">
+            <article class="track-card reveal bus-map-card">
+              <p class="card-eyebrow">{{ .map_title }}</p>
+              <div class="bus-protocol-map">
+                <div class="bus-protocol-cloud">
+                  {{ range .protocols }}
+                    <span class="bus-protocol-chip">{{ . }}</span>
+                  {{ end }}
+                </div>
+                <div class="bus-core-bar">
+                  <span class="bus-core-label">{{ .core_label }}</span>
+                  <span class="bus-core-flow" aria-hidden="true"></span>
+                </div>
+              </div>
+            </article>
+            <article class="track-card reveal bus-guarantee-card">
+              <p class="card-eyebrow">{{ .points_title }}</p>
+              <ul class="bus-guarantee-list">
+                {{ range .points }}
+                  <li>
+                    <span class="bus-guarantee-mark" aria-hidden="true"></span>
+                    <p>{{ . }}</p>
+                  </li>
+                {{ end }}
+              </ul>
+            </article>
+          </div>
+        {{ else }}
+          <div class="docs-layout">
+            <article class="track-card reveal">
+              <ul class="track-points">
+                {{ range .points }}
+                  <li>{{ . }}</li>
+                {{ end }}
+              </ul>
+            </article>
+          </div>
+        {{ end }}
+      </section>
+    {{ end }}
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-shell">
+      <div class="footer-block footer-brand-block">
+        <p class="footer-signature">
+          <span class="copyright-icon" aria-hidden="true">&copy;</span>
+          {{ now.Year }}
+          <a class="footer-company" href="https://arch.bz" target="_blank" rel="noopener noreferrer">ARCH inc.</a>
+          <span class="footer-divider" aria-hidden="true">·</span>
+          {{ .Site.Title }}
+          <span class="footer-signature-right">
+            <span class="footer-divider" aria-hidden="true">·</span>
+            <a class="footer-company" href="{{ "install/" | relLangURL }}">{{ i18n "nav_install" }}</a>
+            <span class="footer-divider" aria-hidden="true">·</span>
+            <a class="footer-company" href="{{ "deploy/" | relLangURL }}">{{ i18n "nav_deploy" }}</a>
+          </span>
+        </p>
+        <p class="footer-note">{{ .Params.footer_note }}</p>
+      </div>
+    </div>
+  </footer>
+{{ end }}

@@ -1,0 +1,9 @@
+name = "mistermorph"
+license = "MIT"
+description = "A high-detail engineering-style single-page Hugo theme with multilingual support."
+homepage = "https://github.com/quailyquaily/mistermorph"
+min_version = "0.120.0"
+
+[author]
+name = "Mister Morph Contributors"
+homepage = "https://github.com/quailyquaily/mistermorph"

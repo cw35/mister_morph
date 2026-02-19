@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="{{ .Site.Language.Lang }}">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    {{ $seoTitle := .Site.Title }}
+    {{ if .IsHome }}
+      {{ with .Params.seo_title }}{{ $seoTitle = . }}{{ end }}
+    {{ else }}
+      {{ $seoTitle = printf "%s | %s" .Title .Site.Title }}
+    {{ end }}
+    {{ $seoDescription := .Params.seo_description | default .Description | default .Params.hero_lead | default .Site.Title }}
+    {{ $ogImageRaw := .Params.seo_image | default .Site.Params.socialImage }}
+    {{ $ogImage := "" }}
+    {{ with $ogImageRaw }}{{ $ogImage = absURL . }}{{ end }}
+    {{ $twitterCard := "summary" }}
+    {{ if $ogImage }}{{ $twitterCard = "summary_large_image" }}{{ end }}
+    <title>{{ $seoTitle }}</title>
+    <meta name="description" content="{{ $seoDescription }}">
+    <meta name="robots" content="index,follow">
+    <link rel="canonical" href="{{ .Permalink }}">
+    <link rel="icon" href="{{ "favicon.ico" | relURL }}" sizes="any">
+    <link rel="icon" type="image/svg+xml" href="{{ "favicon.svg" | relURL }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ "favicon-32x32.png" | relURL }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ "favicon-16x16.png" | relURL }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ "apple-touch-icon.png" | relURL }}">
+    <link rel="mask-icon" href="{{ "safari-pinned-tab.svg" | relURL }}" color="#141414">
+    <link rel="manifest" href="{{ "site.webmanifest" | relURL }}">
+    <meta name="theme-color" content="#070707">
+
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="{{ .Site.Title }}">
+    <meta property="og:title" content="{{ $seoTitle }}">
+    <meta property="og:description" content="{{ $seoDescription }}">
+    <meta property="og:url" content="{{ .Permalink }}">
+    <meta property="og:locale" content="{{ replace .Site.Language.LanguageCode "-" "_" }}">
+    {{ range .AllTranslations }}
+      {{ if ne .Language.Lang $.Language.Lang }}
+        <meta property="og:locale:alternate" content="{{ replace .Language.LanguageCode "-" "_" }}">
+      {{ end }}
+    {{ end }}
+    {{ with $ogImage }}
+      <meta property="og:image" content="{{ . }}">
+      <meta property="og:image:secure_url" content="{{ . }}">
+      {{ with $.Site.Params.socialImageAlt }}<meta property="og:image:alt" content="{{ . }}">{{ end }}
+    {{ end }}
+
+    <meta name="twitter:card" content="{{ $twitterCard }}">
+    <meta name="twitter:title" content="{{ $seoTitle }}">
+    <meta name="twitter:description" content="{{ $seoDescription }}">
+    {{ with $ogImage }}
+      <meta name="twitter:image" content="{{ . }}">
+      {{ with $.Site.Params.socialImageAlt }}<meta name="twitter:image:alt" content="{{ . }}">{{ end }}
+    {{ end }}
+    {{ range .AllTranslations }}
+      <link rel="alternate" hreflang="{{ .Lang }}" href="{{ .Permalink }}">
+    {{ end }}
+    <link rel="alternate" hreflang="x-default" href="{{ .Site.Home.Permalink }}">
+    {{ $css := resources.Get "css/main.css" | resources.Minify | resources.Fingerprint }}
+    <link rel="stylesheet" href="{{ $css.RelPermalink }}" integrity="{{ $css.Data.Integrity }}">
+  </head>
+  <body>
+    <div class="bg-grid" aria-hidden="true"></div>
+    <div class="bg-glow bg-glow-a" aria-hidden="true"></div>
+    <div class="bg-glow bg-glow-b" aria-hidden="true"></div>
+    {{ block "main" . }}{{ end }}
+    {{ $js := resources.Get "js/main.js" | resources.Minify | resources.Fingerprint }}
+    <script src="{{ $js.RelPermalink }}" integrity="{{ $js.Data.Integrity }}" defer></script>
+  </body>
+</html>
