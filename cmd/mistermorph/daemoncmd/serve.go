@@ -54,7 +54,6 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 			if strings.TrimSpace(auth) == "" {
 				return fmt.Errorf("missing server.auth_token (set via --server-auth-token or MISTER_MORPH_SERVER_AUTH_TOKEN)")
 			}
-			healthListen := strings.TrimSpace(configutil.FlagOrViperString(cmd, "health-listen", "health.listen"))
 
 			maxQueue := configutil.FlagOrViperInt(cmd, "server-max-queue", "server.max_queue")
 			store := NewTaskStore(maxQueue)
@@ -278,7 +277,7 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 				Mode:          "serve",
 				AuthToken:     auth,
 				TaskReader:    store,
-				HealthEnabled: strings.TrimSpace(healthListen) != "",
+				HealthEnabled: true,
 				Submit: func(ctx context.Context, req daemonruntime.SubmitTaskRequest) (daemonruntime.SubmitTaskResponse, error) {
 					timeout := viper.GetDuration("timeout")
 					if strings.TrimSpace(req.Timeout) != "" {

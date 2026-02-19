@@ -21,7 +21,6 @@ import (
 	runtimeworker "github.com/quailyquaily/mistermorph/internal/channelruntime/worker"
 	"github.com/quailyquaily/mistermorph/internal/chathistory"
 	"github.com/quailyquaily/mistermorph/internal/daemonruntime"
-	"github.com/quailyquaily/mistermorph/internal/healthcheck"
 	"github.com/quailyquaily/mistermorph/internal/heartbeatutil"
 	"github.com/quailyquaily/mistermorph/internal/llmconfig"
 	"github.com/quailyquaily/mistermorph/internal/llminspect"
@@ -324,13 +323,13 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 	sem := make(chan struct{}, maxConc)
 	workersCtx, stopWorkers := context.WithCancel(pollCtx)
 	defer stopWorkers()
-	healthListen := healthcheck.NormalizeListen(opts.HealthListen)
-	if healthListen != "" {
+	serverListen := strings.TrimSpace(opts.ServerListen)
+	if serverListen != "" {
 		if strings.TrimSpace(opts.ServerAuthToken) == "" {
 			logger.Warn("telegram_daemon_server_auth_empty", "hint", "set server.auth_token so admin can read /tasks")
 		}
 		_, err := daemonruntime.StartServer(pollCtx, logger, daemonruntime.ServerOptions{
-			Listen: healthListen,
+			Listen: serverListen,
 			Routes: daemonruntime.RoutesOptions{
 				Mode:          "telegram",
 				AuthToken:     strings.TrimSpace(opts.ServerAuthToken),
@@ -339,7 +338,7 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 			},
 		})
 		if err != nil {
-			logger.Warn("telegram_daemon_server_start_error", "addr", healthListen, "error", err.Error())
+			logger.Warn("telegram_daemon_server_start_error", "addr", serverListen, "error", err.Error())
 		}
 	}
 

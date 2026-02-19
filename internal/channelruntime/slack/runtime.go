@@ -35,7 +35,7 @@ type RunOptions struct {
 	AddressingInterjectThreshold  float64
 	TaskTimeout                   time.Duration
 	MaxConcurrency                int
-	HealthListen                  string
+	ServerListen                  string
 	ServerAuthToken               string
 	ServerMaxQueue                int
 	BaseURL                       string
@@ -216,13 +216,13 @@ func runSlackLoop(ctx context.Context, d Dependencies, opts runtimeLoopOptions) 
 	addressingConfidenceThreshold := opts.AddressingConfidenceThreshold
 	addressingInterjectThreshold := opts.AddressingInterjectThreshold
 
-	healthListen := strings.TrimSpace(opts.HealthListen)
-	if healthListen != "" {
+	serverListen := strings.TrimSpace(opts.ServerListen)
+	if serverListen != "" {
 		if strings.TrimSpace(opts.ServerAuthToken) == "" {
 			logger.Warn("slack_daemon_server_auth_empty", "hint", "set server.auth_token so admin can read /tasks")
 		}
 		_, err := daemonruntime.StartServer(ctx, logger, daemonruntime.ServerOptions{
-			Listen: healthListen,
+			Listen: serverListen,
 			Routes: daemonruntime.RoutesOptions{
 				Mode:          "slack",
 				AuthToken:     strings.TrimSpace(opts.ServerAuthToken),
@@ -231,7 +231,7 @@ func runSlackLoop(ctx context.Context, d Dependencies, opts runtimeLoopOptions) 
 			},
 		})
 		if err != nil {
-			logger.Warn("slack_daemon_server_start_error", "addr", healthListen, "error", err.Error())
+			logger.Warn("slack_daemon_server_start_error", "addr", serverListen, "error", err.Error())
 		}
 	}
 

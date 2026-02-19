@@ -18,7 +18,7 @@ type RunOptions struct {
 	TaskTimeout                   time.Duration
 	MaxConcurrency                int
 	FileCacheDir                  string
-	HealthListen                  string
+	ServerListen                  string
 	ServerAuthToken               string
 	ServerMaxQueue                int
 	BusMaxInFlight                int

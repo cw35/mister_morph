@@ -18,7 +18,7 @@ func TestResolveRuntimeLoopOptionsFromRunOptions(t *testing.T) {
 		TaskTimeout:                   2 * time.Minute,
 		MaxConcurrency:                5,
 		FileCacheDir:                  " /tmp/cache ",
-		HealthListen:                  "127.0.0.1:8080",
+		ServerListen:                  "127.0.0.1:8080",
 		BusMaxInFlight:                2048,
 		RequestTimeout:                75 * time.Second,
 		AgentMaxSteps:                 20,

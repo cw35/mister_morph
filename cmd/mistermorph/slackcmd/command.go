@@ -38,7 +38,6 @@ func newSlackCmd(d Dependencies) *cobra.Command {
 				AddressingInterjectThreshold:  configutil.FlagOrViperFloat64(cmd, "slack-addressing-interject-threshold", "slack.addressing_interject_threshold"),
 				TaskTimeout:                   configutil.FlagOrViperDuration(cmd, "slack-task-timeout", "slack.task_timeout"),
 				MaxConcurrency:                configutil.FlagOrViperInt(cmd, "slack-max-concurrency", "slack.max_concurrency"),
-				HealthListen:                  strings.TrimSpace(configutil.FlagOrViperString(cmd, "health-listen", "health.listen")),
 				InspectPrompt:                 configutil.FlagOrViperBool(cmd, "inspect-prompt", ""),
 				InspectRequest:                configutil.FlagOrViperBool(cmd, "inspect-request", ""),
 			})

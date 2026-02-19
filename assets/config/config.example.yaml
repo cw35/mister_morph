@@ -325,17 +325,6 @@ slack:
   # Max number of conversations processed concurrently.
   max_concurrency: 3
 
-# Shared health check HTTP endpoint for long-running modes:
-# - `mistermorph serve` (daemon HTTP server)
-# - `mistermorph maep serve`
-# - `mistermorph telegram`
-# Notes:
-# - Empty `health.listen` disables health check in all three modes.
-# - `serve`: non-empty `health.listen` enables `/health` on `server.bind:server.port`.
-# - `maep serve` and `telegram`: `health.listen` is the standalone health server listen address.
-health:
-  listen: "0.0.0.0:8787"
-
 # Heartbeat (periodic awareness/checkpoint).
 heartbeat:
   # Enable heartbeats by default.

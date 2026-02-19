@@ -44,7 +44,6 @@ func newTelegramCmd(d Dependencies) *cobra.Command {
 				PollTimeout:                   configutil.FlagOrViperDuration(cmd, "telegram-poll-timeout", "telegram.poll_timeout"),
 				TaskTimeout:                   configutil.FlagOrViperDuration(cmd, "telegram-task-timeout", "telegram.task_timeout"),
 				MaxConcurrency:                configutil.FlagOrViperInt(cmd, "telegram-max-concurrency", "telegram.max_concurrency"),
-				HealthListen:                  strings.TrimSpace(configutil.FlagOrViperString(cmd, "health-listen", "health.listen")),
 				InspectPrompt:                 configutil.FlagOrViperBool(cmd, "inspect-prompt", ""),
 				InspectRequest:                configutil.FlagOrViperBool(cmd, "inspect-request", ""),
 			})

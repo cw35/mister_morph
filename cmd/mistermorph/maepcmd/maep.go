@@ -22,8 +22,6 @@ import (
 	"github.com/quailyquaily/mistermorph/contacts"
 	busruntime "github.com/quailyquaily/mistermorph/internal/bus"
 	maepbus "github.com/quailyquaily/mistermorph/internal/bus/adapters/maep"
-	"github.com/quailyquaily/mistermorph/internal/configutil"
-	"github.com/quailyquaily/mistermorph/internal/healthcheck"
 	"github.com/quailyquaily/mistermorph/internal/idempotency"
 	"github.com/quailyquaily/mistermorph/internal/pathutil"
 	"github.com/quailyquaily/mistermorph/internal/statepaths"
@@ -486,19 +484,6 @@ func newServeCmd() *cobra.Command {
 			contactsStore := contacts.NewFileStore(statepaths.ContactsDir())
 			contactsSvc := contacts.NewService(contactsStore)
 			logger := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{Level: slog.LevelInfo}))
-			healthListen := healthcheck.NormalizeListen(configutil.FlagOrViperString(cmd, "health-listen", "health.listen"))
-			if healthListen != "" {
-				healthServer, err := healthcheck.StartServer(runCtx, logger, healthListen, "maep")
-				if err != nil {
-					logger.Warn("health_server_start_error", "addr", healthListen, "error", err.Error())
-				} else {
-					defer func() {
-						shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-						_ = healthServer.Shutdown(shutdownCtx)
-						cancel()
-					}()
-				}
-			}
 			inprocBus, err := busruntime.StartInproc(busruntime.BootstrapOptions{
 				MaxInFlight: viper.GetInt("bus.max_inflight"),
 				Logger:      logger,

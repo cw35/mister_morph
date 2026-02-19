@@ -60,7 +60,7 @@ func TestResolveRuntimeLoopOptionsFromRunOptions(t *testing.T) {
 		AddressingInterjectThreshold:  0.2,
 		TaskTimeout:                   3 * time.Minute,
 		MaxConcurrency:                7,
-		HealthListen:                  " 127.0.0.1:8080 ",
+		ServerListen:                  " 127.0.0.1:8080 ",
 		BaseURL:                       " https://example.com/api ",
 		BusMaxInFlight:                4096,
 		RequestTimeout:                30 * time.Second,

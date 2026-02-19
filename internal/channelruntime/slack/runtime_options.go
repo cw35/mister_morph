@@ -3,8 +3,6 @@ package slack
 import (
 	"strings"
 	"time"
-
-	"github.com/quailyquaily/mistermorph/internal/healthcheck"
 )
 
 type runtimeLoopOptions struct {
@@ -17,7 +15,7 @@ type runtimeLoopOptions struct {
 	AddressingInterjectThreshold  float64
 	TaskTimeout                   time.Duration
 	MaxConcurrency                int
-	HealthListen                  string
+	ServerListen                  string
 	ServerAuthToken               string
 	ServerMaxQueue                int
 	Hooks                         Hooks
@@ -43,7 +41,7 @@ func resolveRuntimeLoopOptionsFromRunOptions(opts RunOptions) runtimeLoopOptions
 		AddressingInterjectThreshold:  opts.AddressingInterjectThreshold,
 		TaskTimeout:                   opts.TaskTimeout,
 		MaxConcurrency:                opts.MaxConcurrency,
-		HealthListen:                  strings.TrimSpace(opts.HealthListen),
+		ServerListen:                  strings.TrimSpace(opts.ServerListen),
 		ServerAuthToken:               strings.TrimSpace(opts.ServerAuthToken),
 		ServerMaxQueue:                opts.ServerMaxQueue,
 		BaseURL:                       strings.TrimSpace(opts.BaseURL),
@@ -66,7 +64,7 @@ func normalizeRuntimeLoopOptions(opts runtimeLoopOptions) runtimeLoopOptions {
 	opts.AllowedTeamIDs = normalizeRunStringSlice(opts.AllowedTeamIDs)
 	opts.AllowedChannelIDs = normalizeRunStringSlice(opts.AllowedChannelIDs)
 	opts.GroupTriggerMode = strings.ToLower(strings.TrimSpace(opts.GroupTriggerMode))
-	opts.HealthListen = healthcheck.NormalizeListen(strings.TrimSpace(opts.HealthListen))
+	opts.ServerListen = strings.TrimSpace(opts.ServerListen)
 	opts.ServerAuthToken = strings.TrimSpace(opts.ServerAuthToken)
 	opts.BaseURL = strings.TrimSpace(opts.BaseURL)
 
@@ -96,6 +94,9 @@ func normalizeRuntimeLoopOptions(opts runtimeLoopOptions) runtimeLoopOptions {
 	}
 	if opts.BaseURL == "" {
 		opts.BaseURL = "https://slack.com/api"
+	}
+	if opts.ServerListen == "" {
+		opts.ServerListen = "127.0.0.1:8787"
 	}
 	opts.AddressingConfidenceThreshold = normalizeThreshold(opts.AddressingConfidenceThreshold, 0.6, 0.6)
 	opts.AddressingInterjectThreshold = normalizeThreshold(opts.AddressingInterjectThreshold, 0.6, 0.6)

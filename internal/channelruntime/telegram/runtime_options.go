@@ -17,7 +17,7 @@ type runtimeLoopOptions struct {
 	TaskTimeout                   time.Duration
 	MaxConcurrency                int
 	FileCacheDir                  string
-	HealthListen                  string
+	ServerListen                  string
 	ServerAuthToken               string
 	ServerMaxQueue                int
 	Hooks                         Hooks
@@ -55,7 +55,7 @@ func resolveRuntimeLoopOptionsFromRunOptions(opts RunOptions) runtimeLoopOptions
 		TaskTimeout:                   opts.TaskTimeout,
 		MaxConcurrency:                opts.MaxConcurrency,
 		FileCacheDir:                  strings.TrimSpace(opts.FileCacheDir),
-		HealthListen:                  strings.TrimSpace(opts.HealthListen),
+		ServerListen:                  strings.TrimSpace(opts.ServerListen),
 		ServerAuthToken:               strings.TrimSpace(opts.ServerAuthToken),
 		ServerMaxQueue:                opts.ServerMaxQueue,
 		Hooks:                         opts.Hooks,
@@ -88,7 +88,7 @@ func normalizeRuntimeLoopOptions(opts runtimeLoopOptions) runtimeLoopOptions {
 	opts.MAEPListenAddrs = normalizeRunStringSlice(opts.MAEPListenAddrs)
 	opts.GroupTriggerMode = strings.ToLower(strings.TrimSpace(opts.GroupTriggerMode))
 	opts.FileCacheDir = strings.TrimSpace(opts.FileCacheDir)
-	opts.HealthListen = strings.TrimSpace(opts.HealthListen)
+	opts.ServerListen = strings.TrimSpace(opts.ServerListen)
 	opts.ServerAuthToken = strings.TrimSpace(opts.ServerAuthToken)
 
 	if opts.PollTimeout <= 0 {
@@ -144,6 +144,9 @@ func normalizeRuntimeLoopOptions(opts runtimeLoopOptions) runtimeLoopOptions {
 	}
 	if opts.MAEPSessionCooldown <= 0 {
 		opts.MAEPSessionCooldown = defaultMAEPSessionCooldown
+	}
+	if opts.ServerListen == "" {
+		opts.ServerListen = "127.0.0.1:8787"
 	}
 
 	opts.AddressingConfidenceThreshold = normalizeAddressingThreshold(opts.AddressingConfidenceThreshold, 0.6)

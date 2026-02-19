@@ -66,7 +66,6 @@ func newRootCmd() *cobra.Command {
 	cmd.PersistentFlags().Int("log-max-string-value-chars", 2000, "Max characters per string value in logged params.")
 	cmd.PersistentFlags().Int("log-max-skill-content-chars", 8000, "Max characters of SKILL.md content to log.")
 	cmd.PersistentFlags().StringArray("log-redact-key", nil, "Extra param keys to redact in logs (repeatable).")
-	cmd.PersistentFlags().String("health-listen", "0.0.0.0:8787", "Health listen address (empty disables health; serve uses this as on/off only).")
 
 	_ = viper.BindPFlag("logging.level", cmd.PersistentFlags().Lookup("log-level"))
 	_ = viper.BindPFlag("logging.format", cmd.PersistentFlags().Lookup("log-format"))
@@ -79,7 +78,6 @@ func newRootCmd() *cobra.Command {
 	_ = viper.BindPFlag("logging.max_string_value_chars", cmd.PersistentFlags().Lookup("log-max-string-value-chars"))
 	_ = viper.BindPFlag("logging.max_skill_content_chars", cmd.PersistentFlags().Lookup("log-max-skill-content-chars"))
 	_ = viper.BindPFlag("logging.redact_keys", cmd.PersistentFlags().Lookup("log-redact-key"))
-	_ = viper.BindPFlag("health.listen", cmd.PersistentFlags().Lookup("health-listen"))
 
 	viper.SetDefault("logging.format", "text")
 	viper.SetDefault("logging.add_source", false)
