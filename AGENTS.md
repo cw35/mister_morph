@@ -20,7 +20,7 @@
 - Example run:
   - `./bin/mistermorph run --task "Summarize this repo" --provider openai --model gpt-5.2 --api-key "$OPENAI_API_KEY"`
 
-### Admin Frontend (`web/admin`)
+### Admin Frontend (`web/console`)
 
 - Package manager: use `pnpm` (do not use `npm`).
 - Allowed commands:

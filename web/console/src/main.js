@@ -5,33 +5,14 @@ import "quail-ui/dist/index.css";
 import "./styles.css";
 import "./override.css";
 
-const AUTH_STORAGE_KEY = "mistermorph_admin_auth_v1";
-
-function detectBasePath(pathname) {
-  const clean = (pathname || "/").replace(/\/+$/, "") || "/";
-  const fixed = ["/login", "/dashboard", "/tasks", "/contacts-files", "/settings"];
-  for (const p of fixed) {
-    if (clean.endsWith(p)) {
-      const base = clean.slice(0, clean.length - p.length);
-      return base || "/admin";
-    }
-  }
-  if (clean.includes("/tasks/")) {
-    return clean.slice(0, clean.indexOf("/tasks/")) || "/admin";
-  }
-  if (clean === "/") {
-    return "/admin";
-  }
-  return clean;
-}
-
-const BASE_PATH = detectBasePath(window.location.pathname);
+const AUTH_STORAGE_KEY = "mistermorph_console_auth_v1";
+const BASE_PATH = "/console";
 const API_BASE = `${BASE_PATH}/api`;
 
 const authState = reactive({
   token: "",
   expiresAt: "",
-  account: "admin",
+  account: "console",
 });
 
 const authValid = computed(() => {
@@ -59,7 +40,7 @@ function saveAuth() {
 function clearAuth() {
   authState.token = "";
   authState.expiresAt = "";
-  authState.account = "admin";
+  authState.account = "console";
   localStorage.removeItem(AUTH_STORAGE_KEY);
 }
 
@@ -72,7 +53,7 @@ function hydrateAuth() {
     const parsed = JSON.parse(raw);
     authState.token = typeof parsed.token === "string" ? parsed.token : "";
     authState.expiresAt = typeof parsed.expiresAt === "string" ? parsed.expiresAt : "";
-    authState.account = typeof parsed.account === "string" ? parsed.account : "admin";
+    authState.account = typeof parsed.account === "string" ? parsed.account : "console";
   } catch {
     clearAuth();
   }
@@ -175,7 +156,7 @@ const LoginView = {
         });
         authState.token = body.access_token || "";
         authState.expiresAt = body.expires_at || "";
-        authState.account = "admin";
+        authState.account = "console";
         saveAuth();
         const redirect = typeof route.query.redirect === "string" ? route.query.redirect : "/dashboard";
         router.replace(redirect);
@@ -190,12 +171,12 @@ const LoginView = {
   },
   template: `
     <section class="login-box">
-      <h1 class="login-title">MisterMorph Admin</h1>
+      <h1 class="login-title">Mistermorph Console</h1>
       <div class="stack">
         <QInput
           v-model="password"
           inputType="password"
-          placeholder="Admin password"
+          placeholder="Console password"
           :disabled="busy"
         />
         <QButton :loading="busy" class="primary" @click="submit">登录</QButton>
@@ -672,7 +653,7 @@ const App = {
               <QIconMenu />
             </QButton>
             <div class="brand">
-              <h1 class="brand-title">MISTERMORPH / ADMIN</h1>
+              <h1 class="brand-title">Mistermorph Console</h1>
             </div>
           </div>
           <div class="topbar-actions">
@@ -733,7 +714,7 @@ router.beforeEach(async (to) => {
   }
   try {
     const me = await apiFetch("/auth/me");
-    authState.account = me.account || "admin";
+    authState.account = me.account || "console";
     authState.expiresAt = me.expires_at || authState.expiresAt;
     saveAuth();
   } catch {

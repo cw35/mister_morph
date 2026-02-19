@@ -256,20 +256,20 @@ server:
   # Can be overridden by CLI flag --with-maep.
   with_maep: false
 
-# Admin mode (`mistermorph admin serve`).
-admin:
-  # Bind address for admin API + SPA.
+# Console mode (`mistermorph console serve`).
+console:
+  # Bind address for console API + SPA.
   listen: "127.0.0.1:9080"
-  # Base path for admin routes and static files.
-  base_path: "/admin"
+  # Base path for console routes and static files.
+  base_path: "/console"
   # Optional static directory for SPA build artifacts.
-  # Can be overridden by --admin-static-dir.
+  # Can be overridden by --console-static-dir.
   static_dir: ""
   # Prefer password_hash in production; set via env when possible.
-  password: "" # or set via MISTER_MORPH_ADMIN_PASSWORD
+  password: "" # or set via MISTER_MORPH_CONSOLE_PASSWORD
   # Bcrypt hash string, e.g. "$2a$..."
-  password_hash: "" # or set via MISTER_MORPH_ADMIN_PASSWORD_HASH
-  # Session TTL for admin bearer token.
+  password_hash: "" # or set via MISTER_MORPH_CONSOLE_PASSWORD_HASH
+  # Session TTL for console bearer token.
   session_ttl: "12h"
 
 # Telegram bot mode (`mistermorph telegram`).

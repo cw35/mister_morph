@@ -1,4 +1,4 @@
-package admincmd
+package consolecmd
 
 import (
 	"crypto/subtle"
@@ -53,7 +53,7 @@ type server struct {
 func newServeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "serve",
-		Short: "Run admin API + SPA server",
+		Short: "Run console API + SPA server",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := loadServeConfig(cmd)
 			if err != nil {
@@ -67,39 +67,39 @@ func newServeCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().String("admin-listen", "127.0.0.1:9080", "Admin server listen address.")
-	cmd.Flags().String("admin-base-path", "/admin", "Admin base path.")
-	cmd.Flags().String("admin-static-dir", "", "Admin SPA static directory (required).")
-	cmd.Flags().Duration("admin-session-ttl", 12*time.Hour, "Session TTL for admin bearer token.")
+	cmd.Flags().String("console-listen", "127.0.0.1:9080", "Console server listen address.")
+	cmd.Flags().String("console-base-path", "/console", "Console base path.")
+	cmd.Flags().String("console-static-dir", "", "Mistermorph Console SPA static directory (required).")
+	cmd.Flags().Duration("console-session-ttl", 12*time.Hour, "Session TTL for console bearer token.")
 
 	return cmd
 }
 
 func loadServeConfig(cmd *cobra.Command) (serveConfig, error) {
-	listen := strings.TrimSpace(configutil.FlagOrViperString(cmd, "admin-listen", "admin.listen"))
+	listen := strings.TrimSpace(configutil.FlagOrViperString(cmd, "console-listen", "console.listen"))
 	if listen == "" {
 		listen = "127.0.0.1:9080"
 	}
 
-	basePath, err := normalizeBasePath(configutil.FlagOrViperString(cmd, "admin-base-path", "admin.base_path"))
+	basePath, err := normalizeBasePath(configutil.FlagOrViperString(cmd, "console-base-path", "console.base_path"))
 	if err != nil {
 		return serveConfig{}, err
 	}
 
-	staticDir := strings.TrimSpace(configutil.FlagOrViperString(cmd, "admin-static-dir", "admin.static_dir"))
+	staticDir := strings.TrimSpace(configutil.FlagOrViperString(cmd, "console-static-dir", "console.static_dir"))
 	staticDir = pathutil.ExpandHomePath(staticDir)
 	if staticDir == "" {
-		return serveConfig{}, fmt.Errorf("missing admin static directory (--admin-static-dir)")
+		return serveConfig{}, fmt.Errorf("missing console static directory (--console-static-dir)")
 	}
 	if fi, err := os.Stat(staticDir); err != nil || !fi.IsDir() {
-		return serveConfig{}, fmt.Errorf("admin static dir is invalid: %s", staticDir)
+		return serveConfig{}, fmt.Errorf("console static dir is invalid: %s", staticDir)
 	}
 	indexPath := filepath.Join(staticDir, "index.html")
 	if fi, err := os.Stat(indexPath); err != nil || fi.IsDir() {
-		return serveConfig{}, fmt.Errorf("admin static dir must contain index.html: %s", indexPath)
+		return serveConfig{}, fmt.Errorf("console static dir must contain index.html: %s", indexPath)
 	}
 
-	sessionTTL := configutil.FlagOrViperDuration(cmd, "admin-session-ttl", "admin.session_ttl")
+	sessionTTL := configutil.FlagOrViperDuration(cmd, "console-session-ttl", "console.session_ttl")
 	if sessionTTL <= 0 {
 		sessionTTL = 12 * time.Hour
 	}
@@ -114,8 +114,8 @@ func loadServeConfig(cmd *cobra.Command) (serveConfig, error) {
 		basePath:     basePath,
 		staticDir:    staticDir,
 		sessionTTL:   sessionTTL,
-		password:     viper.GetString("admin.password"),
-		passwordHash: viper.GetString("admin.password_hash"),
+		password:     viper.GetString("console.password"),
+		passwordHash: viper.GetString("console.password_hash"),
 		daemonURL:    daemonURL,
 		daemonToken:  daemonToken,
 		stateDir:     stateDir,
@@ -126,14 +126,14 @@ func loadServeConfig(cmd *cobra.Command) (serveConfig, error) {
 func normalizeBasePath(raw string) (string, error) {
 	v := strings.TrimSpace(raw)
 	if v == "" {
-		return "/admin", nil
+		return "/console", nil
 	}
 	if !strings.HasPrefix(v, "/") {
 		v = "/" + v
 	}
 	v = path.Clean(v)
 	if v == "." || v == "/" {
-		return "", fmt.Errorf("admin base path cannot be root")
+		return "", fmt.Errorf("console base path cannot be root")
 	}
 	return strings.TrimRight(v, "/"), nil
 }
@@ -197,7 +197,7 @@ func (s *server) withAuth(next http.HandlerFunc) http.HandlerFunc {
 			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
-		r.Header.Set("X-Admin-Token-Expires-At", expiresAt.Format(time.RFC3339))
+		r.Header.Set("X-Console-Token-Expires-At", expiresAt.Format(time.RFC3339))
 		next(w, r)
 	}
 }
@@ -210,7 +210,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC()
 	ip := clientIP(r.RemoteAddr)
-	key := "admin@" + ip
+	key := "console@" + ip
 	if remaining, locked := s.limiter.CheckLocked(key, now); locked {
 		w.Header().Set("Retry-After", strconv.Itoa(int(remaining.Seconds())+1))
 		writeError(w, http.StatusTooManyRequests, "too many failed attempts")
@@ -270,10 +270,10 @@ func (s *server) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	expires := strings.TrimSpace(r.Header.Get("X-Admin-Token-Expires-At"))
+	expires := strings.TrimSpace(r.Header.Get("X-Console-Token-Expires-At"))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"authenticated": true,
-		"account":       "admin",
+		"account":       "console",
 		"expires_at":    expires,
 	})
 }
@@ -308,7 +308,7 @@ func (s *server) handleSystemConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"admin": map[string]any{
+		"console": map[string]any{
 			"listen":            s.cfg.listen,
 			"base_path":         s.cfg.basePath,
 			"session_ttl":       s.cfg.sessionTTL.String(),
@@ -322,7 +322,7 @@ func (s *server) handleSystemConfig(w http.ResponseWriter, r *http.Request) {
 		"paths": map[string]any{
 			"file_state_dir": s.cfg.stateDir,
 			"file_cache_dir": s.cfg.cacheDir,
-			"admin_static":   s.cfg.staticDir,
+			"console_static": s.cfg.staticDir,
 		},
 	})
 }
@@ -334,8 +334,8 @@ func (s *server) handleSystemDiagnostics(w http.ResponseWriter, r *http.Request)
 	}
 
 	checks := []map[string]any{
-		diagnoseDirReadable("admin_static_dir", s.cfg.staticDir),
-		diagnoseFileReadable("admin_static_index", filepath.Join(s.cfg.staticDir, "index.html")),
+		diagnoseDirReadable("console_static_dir", s.cfg.staticDir),
+		diagnoseFileReadable("console_static_index", filepath.Join(s.cfg.staticDir, "index.html")),
 		diagnoseDirWritable("file_state_dir", s.cfg.stateDir),
 		diagnoseDirWritable("file_cache_dir", s.cfg.cacheDir),
 		diagnoseFileReadable("contacts_active", s.contactsActive),

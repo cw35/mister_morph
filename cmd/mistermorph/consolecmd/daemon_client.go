@@ -1,4 +1,4 @@
-package admincmd
+package consolecmd
 
 import (
 	"context"

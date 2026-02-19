@@ -1,4 +1,4 @@
-package admincmd
+package consolecmd
 
 import (
 	"crypto/rand"
@@ -23,10 +23,10 @@ func newPasswordVerifier(plain, hash string) (*passwordVerifier, error) {
 	plain = strings.TrimSpace(plain)
 	hash = strings.TrimSpace(hash)
 	if plain == "" && hash == "" {
-		return nil, fmt.Errorf("missing admin password (set admin.password/admin.password_hash or env)")
+		return nil, fmt.Errorf("missing console password (set console.password/console.password_hash or env)")
 	}
 	if hash != "" && !strings.HasPrefix(hash, "$2") {
-		return nil, fmt.Errorf("admin.password_hash currently supports bcrypt hashes only")
+		return nil, fmt.Errorf("console.password_hash currently supports bcrypt hashes only")
 	}
 	return &passwordVerifier{
 		plain: plain,

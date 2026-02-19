@@ -17,8 +17,9 @@
   --q-bg-light-float: #f4f4f4;
 }
 
+/* QButton override */
 .touchable {
-  border-radius: 2px;
+  border-radius: 0 !important;
   font-weight: 600;
   letter-spacing: 0.01em;
   box-shadow: none !important;
@@ -70,8 +71,100 @@
   color: var(--q-c-dark) !important;
 }
 
-.q-input .q-text-field-wrapper,
-.q-textarea .q-textarea-wrapper,
+/* QButton override (navigation variants) */
+.sidebar .touchable.nav-btn {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
+}
+
+.sidebar .touchable.nav-btn:hover {
+  background: rgba(96, 96, 96, 0.1) !important;
+  color: var(--text-0, #141414) !important;
+}
+
+.sidebar .touchable.nav-btn.nav-btn-active {
+  border-left: none !important;
+  background: rgba(96, 96, 96, 0.14) !important;
+  color: var(--text-0, #141414) !important;
+}
+
+.mobile-drawer-nav .touchable.nav-btn {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
+}
+
+.mobile-drawer-nav .touchable.nav-btn:hover {
+  background: rgba(96, 96, 96, 0.1) !important;
+  color: var(--text-0, #141414) !important;
+}
+
+.mobile-drawer-nav .touchable.nav-btn.nav-btn-active {
+  border-left: none !important;
+  background: rgba(96, 96, 96, 0.14) !important;
+  color: var(--text-0, #141414) !important;
+}
+
+/* QInput override */
+.q-input {
+  width: 100%;
+}
+
+.q-input .q-text-field-wrapper {
+  border-radius: 2px !important;
+  border: 1px solid rgba(0, 0, 0, 0.2) !important;
+  box-shadow: none !important;
+  background-color: rgba(255, 255, 255, 0.86) !important;
+}
+
+.q-input .q-text-field-wrapper:has(input:focus) {
+  border-color: rgba(217, 106, 43, 0.62) !important;
+  box-shadow: 0 0 0 1px rgba(217, 106, 43, 0.16) !important;
+}
+
+.q-input input {
+  color: #1f1f1f !important;
+}
+
+.q-input input::placeholder {
+  color: #6a6a6a !important;
+}
+
+/* QTextarea override */
+.q-textarea {
+  width: 100%;
+}
+
+.q-textarea .q-textarea-wrapper {
+  border-radius: 2px !important;
+  border: 1px solid rgba(0, 0, 0, 0.2) !important;
+  box-shadow: none !important;
+  background-color: rgba(255, 255, 255, 0.86) !important;
+}
+
+.q-textarea .q-textarea-wrapper:has(textarea:focus) {
+  border-color: rgba(217, 106, 43, 0.62) !important;
+  box-shadow: 0 0 0 1px rgba(217, 106, 43, 0.16) !important;
+}
+
+.q-textarea textarea {
+  color: #1f1f1f !important;
+}
+
+.q-textarea textarea::placeholder {
+  color: #6a6a6a !important;
+}
+
+/* QDropdownMenu override */
+.q-dropdown-menu {
+  width: 100%;
+}
+
 .q-dropdown-menu .q-dropdown-menu-action {
   border-radius: 2px !important;
   border: 1px solid rgba(0, 0, 0, 0.2) !important;
@@ -79,23 +172,12 @@
   background-color: rgba(255, 255, 255, 0.86) !important;
 }
 
-.q-input .q-text-field-wrapper:has(input:focus),
-.q-textarea .q-textarea-wrapper:has(textarea:focus),
 .q-dropdown-menu .q-dropdown-menu-action:has(input:focus) {
   border-color: rgba(217, 106, 43, 0.62) !important;
   box-shadow: 0 0 0 1px rgba(217, 106, 43, 0.16) !important;
 }
 
-.q-input input,
-.q-textarea textarea {
-  color: #1f1f1f !important;
-}
-
-.q-input input::placeholder,
-.q-textarea textarea::placeholder {
-  color: #6a6a6a !important;
-}
-
+/* QFence override */
 .q-fence .q-fence-inner {
   opacity: 1;
   border: 1px solid rgba(0, 0, 0, 0.15);
@@ -123,6 +205,7 @@
   color: #8d3d2d;
 }
 
+/* QProgress override */
 .q-progress {
   min-width: 0;
 }
@@ -136,4 +219,39 @@
 .q-progress .q-progress-slot .q-progress-bar {
   border-radius: 999px;
   background: linear-gradient(90deg, #d96a2b 0%, #efab7c 100%);
+}
+
+/* QDrawer override */
+.q-drawer-mask {
+  background: rgba(0, 0, 0, 0.24) !important;
+}
+
+.q-drawer {
+  border-right: 1px solid var(--line, rgba(0, 0, 0, 0.16));
+  background: rgba(247, 247, 247, 0.97) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 12px 24px rgba(20, 24, 32, 0.14) !important;
+}
+
+.q-drawer-header {
+  border-bottom: 1px solid var(--line, rgba(0, 0, 0, 0.16)) !important;
+  padding: 12px 12px 10px !important;
+}
+
+.q-drawer-title {
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-1, #343434);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.q-drawer-close {
+  color: var(--text-1, #343434);
+}
+
+.q-drawer-body {
+  padding: 10px !important;
 }

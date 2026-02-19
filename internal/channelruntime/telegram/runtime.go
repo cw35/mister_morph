@@ -326,7 +326,7 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 	serverListen := strings.TrimSpace(opts.ServerListen)
 	if serverListen != "" {
 		if strings.TrimSpace(opts.ServerAuthToken) == "" {
-			logger.Warn("telegram_daemon_server_auth_empty", "hint", "set server.auth_token so admin can read /tasks")
+			logger.Warn("telegram_daemon_server_auth_empty", "hint", "set server.auth_token so console can read /tasks")
 		}
 		_, err := daemonruntime.StartServer(pollCtx, logger, daemonruntime.ServerOptions{
 			Listen: serverListen,

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/quailyquaily/mistermorph/agent"
-	"github.com/quailyquaily/mistermorph/cmd/mistermorph/admincmd"
+	"github.com/quailyquaily/mistermorph/cmd/mistermorph/consolecmd"
 	"github.com/quailyquaily/mistermorph/cmd/mistermorph/contactscmd"
 	"github.com/quailyquaily/mistermorph/cmd/mistermorph/daemoncmd"
 	"github.com/quailyquaily/mistermorph/cmd/mistermorph/maepcmd"
@@ -174,7 +174,7 @@ func newRootCmd() *cobra.Command {
 	cmd.AddCommand(skillscmd.New())
 	cmd.AddCommand(maepcmd.New())
 	cmd.AddCommand(contactscmd.New())
-	cmd.AddCommand(admincmd.New())
+	cmd.AddCommand(consolecmd.New())
 	cmd.AddCommand(newInstallCmd())
 	cmd.AddCommand(newVersionCmd())
 

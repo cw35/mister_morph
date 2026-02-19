@@ -219,7 +219,7 @@ func runSlackLoop(ctx context.Context, d Dependencies, opts runtimeLoopOptions) 
 	serverListen := strings.TrimSpace(opts.ServerListen)
 	if serverListen != "" {
 		if strings.TrimSpace(opts.ServerAuthToken) == "" {
-			logger.Warn("slack_daemon_server_auth_empty", "hint", "set server.auth_token so admin can read /tasks")
+			logger.Warn("slack_daemon_server_auth_empty", "hint", "set server.auth_token so console can read /tasks")
 		}
 		_, err := daemonruntime.StartServer(ctx, logger, daemonruntime.ServerOptions{
 			Listen: serverListen,
