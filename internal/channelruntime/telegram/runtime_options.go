@@ -18,6 +18,8 @@ type runtimeLoopOptions struct {
 	MaxConcurrency                int
 	FileCacheDir                  string
 	HealthListen                  string
+	ServerAuthToken               string
+	ServerMaxQueue                int
 	Hooks                         Hooks
 	BusMaxInFlight                int
 	RequestTimeout                time.Duration
@@ -54,6 +56,8 @@ func resolveRuntimeLoopOptionsFromRunOptions(opts RunOptions) runtimeLoopOptions
 		MaxConcurrency:                opts.MaxConcurrency,
 		FileCacheDir:                  strings.TrimSpace(opts.FileCacheDir),
 		HealthListen:                  strings.TrimSpace(opts.HealthListen),
+		ServerAuthToken:               strings.TrimSpace(opts.ServerAuthToken),
+		ServerMaxQueue:                opts.ServerMaxQueue,
 		Hooks:                         opts.Hooks,
 		BusMaxInFlight:                opts.BusMaxInFlight,
 		RequestTimeout:                opts.RequestTimeout,
@@ -85,6 +89,7 @@ func normalizeRuntimeLoopOptions(opts runtimeLoopOptions) runtimeLoopOptions {
 	opts.GroupTriggerMode = strings.ToLower(strings.TrimSpace(opts.GroupTriggerMode))
 	opts.FileCacheDir = strings.TrimSpace(opts.FileCacheDir)
 	opts.HealthListen = strings.TrimSpace(opts.HealthListen)
+	opts.ServerAuthToken = strings.TrimSpace(opts.ServerAuthToken)
 
 	if opts.PollTimeout <= 0 {
 		opts.PollTimeout = 30 * time.Second
@@ -97,6 +102,9 @@ func normalizeRuntimeLoopOptions(opts runtimeLoopOptions) runtimeLoopOptions {
 	}
 	if opts.BusMaxInFlight <= 0 {
 		opts.BusMaxInFlight = 1024
+	}
+	if opts.ServerMaxQueue <= 0 {
+		opts.ServerMaxQueue = 100
 	}
 	if opts.RequestTimeout <= 0 {
 		opts.RequestTimeout = 90 * time.Second

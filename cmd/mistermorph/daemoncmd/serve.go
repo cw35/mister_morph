@@ -14,7 +14,7 @@ import (
 	"github.com/quailyquaily/mistermorph/agent"
 	"github.com/quailyquaily/mistermorph/guard"
 	"github.com/quailyquaily/mistermorph/internal/configutil"
-	"github.com/quailyquaily/mistermorph/internal/healthcheck"
+	"github.com/quailyquaily/mistermorph/internal/daemonruntime"
 	"github.com/quailyquaily/mistermorph/internal/heartbeatutil"
 	"github.com/quailyquaily/mistermorph/internal/llmconfig"
 	"github.com/quailyquaily/mistermorph/internal/llmutil"
@@ -274,70 +274,30 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 			}
 
 			mux := http.NewServeMux()
-			mux.HandleFunc("/tasks", func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodPost {
-					http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-					return
-				}
-				if !checkAuth(r, auth) {
-					http.Error(w, "unauthorized", http.StatusUnauthorized)
-					return
-				}
-				var req SubmitTaskRequest
-				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-					http.Error(w, "invalid json", http.StatusBadRequest)
-					return
-				}
-				req.Task = strings.TrimSpace(req.Task)
-				if req.Task == "" {
-					http.Error(w, "missing task", http.StatusBadRequest)
-					return
-				}
-
-				timeout := viper.GetDuration("timeout")
-				if strings.TrimSpace(req.Timeout) != "" {
-					if d, err := time.ParseDuration(req.Timeout); err == nil && d > 0 {
-						timeout = d
-					} else if err != nil {
-						http.Error(w, "invalid timeout (use Go duration like 2m, 30s)", http.StatusBadRequest)
-						return
+			daemonruntime.RegisterRoutes(mux, daemonruntime.RoutesOptions{
+				Mode:          "serve",
+				AuthToken:     auth,
+				TaskReader:    store,
+				HealthEnabled: strings.TrimSpace(healthListen) != "",
+				Submit: func(ctx context.Context, req daemonruntime.SubmitTaskRequest) (daemonruntime.SubmitTaskResponse, error) {
+					timeout := viper.GetDuration("timeout")
+					if strings.TrimSpace(req.Timeout) != "" {
+						if d, err := time.ParseDuration(req.Timeout); err == nil && d > 0 {
+							timeout = d
+						} else if err != nil {
+							return daemonruntime.SubmitTaskResponse{}, daemonruntime.BadRequest("invalid timeout (use Go duration like 2m, 30s)")
+						}
 					}
-				}
-				model := strings.TrimSpace(req.Model)
-				if model == "" {
-					model = llmutil.ModelForProviderWithValues(provider, llmValues)
-				}
-
-				info, err := store.Enqueue(context.Background(), req.Task, model, timeout)
-				if err != nil {
-					http.Error(w, err.Error(), http.StatusServiceUnavailable)
-					return
-				}
-				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(SubmitTaskResponse{ID: info.ID, Status: info.Status})
-			})
-			mux.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodGet {
-					http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-					return
-				}
-				if !checkAuth(r, auth) {
-					http.Error(w, "unauthorized", http.StatusUnauthorized)
-					return
-				}
-				id := strings.TrimPrefix(r.URL.Path, "/tasks/")
-				id = strings.TrimSpace(id)
-				if id == "" {
-					http.Error(w, "missing id", http.StatusBadRequest)
-					return
-				}
-				info, ok := store.Get(id)
-				if !ok {
-					http.NotFound(w, r)
-					return
-				}
-				w.Header().Set("Content-Type", "application/json")
-				_ = json.NewEncoder(w).Encode(info)
+					taskModel := strings.TrimSpace(req.Model)
+					if taskModel == "" {
+						taskModel = llmutil.ModelForProviderWithValues(provider, llmValues)
+					}
+					info, err := store.Enqueue(context.Background(), req.Task, taskModel, timeout)
+					if err != nil {
+						return daemonruntime.SubmitTaskResponse{}, err
+					}
+					return daemonruntime.SubmitTaskResponse{ID: info.ID, Status: info.Status}, nil
+				},
 			})
 
 			mux.HandleFunc("/approvals/", func(w http.ResponseWriter, r *http.Request) {
@@ -452,9 +412,6 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 			})
 
 			addr := bind + ":" + strconv.Itoa(port)
-			if healthListen != "" {
-				healthcheck.RegisterHealthEndpoint(mux, "serve")
-			}
 			srv := &http.Server{
 				Addr:              addr,
 				Handler:           mux,
@@ -482,13 +439,7 @@ func checkAuth(r *http.Request, token string) bool {
 }
 
 func errorsIsContextDeadline(ctx context.Context, err error) bool {
-	if err == nil {
-		return false
-	}
-	if ctx != nil && ctx.Err() != nil {
-		return true
-	}
-	return strings.Contains(strings.ToLower(err.Error()), "context deadline exceeded")
+	return daemonruntime.IsContextDeadline(ctx, err)
 }
 
 func runOneTask(ctx context.Context, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, registry *tools.Registry, baseCfg agent.Config, sharedGuard *guard.Guard, task string, model string, meta map[string]any, skillsCfg skillsutil.SkillsConfig, requireSkillProfiles bool) (*agent.Final, *agent.Context, error) {

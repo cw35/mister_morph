@@ -17,7 +17,7 @@ import (
 	slackbus "github.com/quailyquaily/mistermorph/internal/bus/adapters/slack"
 	runtimeworker "github.com/quailyquaily/mistermorph/internal/channelruntime/worker"
 	"github.com/quailyquaily/mistermorph/internal/chathistory"
-	"github.com/quailyquaily/mistermorph/internal/healthcheck"
+	"github.com/quailyquaily/mistermorph/internal/daemonruntime"
 	"github.com/quailyquaily/mistermorph/internal/llmconfig"
 	"github.com/quailyquaily/mistermorph/internal/llminspect"
 	"github.com/quailyquaily/mistermorph/internal/statepaths"
@@ -36,6 +36,8 @@ type RunOptions struct {
 	TaskTimeout                   time.Duration
 	MaxConcurrency                int
 	HealthListen                  string
+	ServerAuthToken               string
+	ServerMaxQueue                int
 	BaseURL                       string
 	BusMaxInFlight                int
 	RequestTimeout                time.Duration
@@ -49,6 +51,7 @@ type RunOptions struct {
 }
 
 type slackJob struct {
+	TaskID          string
 	ConversationKey string
 	TeamID          string
 	ChannelID       string
@@ -96,6 +99,7 @@ func runSlackLoop(ctx context.Context, d Dependencies, opts runtimeLoopOptions) 
 	}
 	hooks := opts.Hooks
 	slog.SetDefault(logger)
+	daemonStore := daemonruntime.NewMemoryStore(opts.ServerMaxQueue)
 
 	inprocBus, err := busruntime.StartInproc(busruntime.BootstrapOptions{
 		MaxInFlight: opts.BusMaxInFlight,
@@ -214,15 +218,20 @@ func runSlackLoop(ctx context.Context, d Dependencies, opts runtimeLoopOptions) 
 
 	healthListen := strings.TrimSpace(opts.HealthListen)
 	if healthListen != "" {
-		healthServer, err := healthcheck.StartServer(ctx, logger, healthListen, "slack")
+		if strings.TrimSpace(opts.ServerAuthToken) == "" {
+			logger.Warn("slack_daemon_server_auth_empty", "hint", "set server.auth_token so admin can read /tasks")
+		}
+		_, err := daemonruntime.StartServer(ctx, logger, daemonruntime.ServerOptions{
+			Listen: healthListen,
+			Routes: daemonruntime.RoutesOptions{
+				Mode:          "slack",
+				AuthToken:     strings.TrimSpace(opts.ServerAuthToken),
+				TaskReader:    daemonStore,
+				HealthEnabled: true,
+			},
+		})
 		if err != nil {
-			logger.Warn("slack_health_server_start_error", "addr", healthListen, "error", err.Error())
-		} else {
-			defer func() {
-				shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-				_ = healthServer.Shutdown(shutdownCtx)
-				cancel()
-			}()
+			logger.Warn("slack_daemon_server_start_error", "addr", healthListen, "error", err.Error())
 		}
 	}
 
@@ -257,6 +266,13 @@ func runSlackLoop(ctx context.Context, d Dependencies, opts runtimeLoopOptions) 
 				if job.Version != curVersion {
 					h = nil
 				}
+				if daemonStore != nil && strings.TrimSpace(job.TaskID) != "" {
+					startedAt := time.Now().UTC()
+					daemonStore.Update(job.TaskID, func(info *daemonruntime.TaskInfo) {
+						info.Status = daemonruntime.TaskRunning
+						info.StartedAt = &startedAt
+					})
+				}
 				runCtx, cancel := context.WithTimeout(workerCtx, taskTimeout)
 				final, _, loadedSkills, runErr := runSlackTask(
 					runCtx,
@@ -278,6 +294,18 @@ func runSlackLoop(ctx context.Context, d Dependencies, opts runtimeLoopOptions) 
 				if runErr != nil {
 					if workerCtx.Err() != nil {
 						return
+					}
+					if daemonStore != nil && strings.TrimSpace(job.TaskID) != "" {
+						finishedAt := time.Now().UTC()
+						failedStatus := daemonruntime.TaskFailed
+						if isSlackTaskContextCanceled(runErr) {
+							failedStatus = daemonruntime.TaskCanceled
+						}
+						daemonStore.Update(job.TaskID, func(info *daemonruntime.TaskInfo) {
+							info.Status = failedStatus
+							info.Error = strings.TrimSpace(runErr.Error())
+							info.FinishedAt = &finishedAt
+						})
 					}
 					callErrorHook(workerCtx, logger, hooks, ErrorEvent{
 						Stage:           ErrorStageRunTask,
@@ -313,6 +341,17 @@ func runSlackLoop(ctx context.Context, d Dependencies, opts runtimeLoopOptions) 
 				}
 
 				outText := strings.TrimSpace(formatFinalOutput(final))
+				if daemonStore != nil && strings.TrimSpace(job.TaskID) != "" {
+					finishedAt := time.Now().UTC()
+					daemonStore.Update(job.TaskID, func(info *daemonruntime.TaskInfo) {
+						info.Status = daemonruntime.TaskDone
+						info.Error = ""
+						info.FinishedAt = &finishedAt
+						info.Result = map[string]any{
+							"output": daemonruntime.TruncateUTF8(outText, 4000),
+						}
+					})
+				}
 				if outText != "" {
 					if workerCtx.Err() != nil {
 						return
@@ -377,6 +416,7 @@ func runSlackLoop(ctx context.Context, d Dependencies, opts runtimeLoopOptions) 
 		v := w.Version
 		mu.Unlock()
 		job := slackJob{
+			TaskID:          slackTaskID(inbound.TeamID, inbound.ChannelID, inbound.MessageTS),
 			ConversationKey: msg.ConversationKey,
 			TeamID:          inbound.TeamID,
 			ChannelID:       inbound.ChannelID,
@@ -391,6 +431,28 @@ func runSlackLoop(ctx context.Context, d Dependencies, opts runtimeLoopOptions) 
 		}
 		if err := runtimeworker.Enqueue(ctx, workersCtx, w.Jobs, job); err != nil {
 			return err
+		}
+		if daemonStore != nil {
+			createdAt := inbound.SentAt.UTC()
+			if createdAt.IsZero() {
+				createdAt = time.Now().UTC()
+			}
+			daemonStore.Upsert(daemonruntime.TaskInfo{
+				ID:        job.TaskID,
+				Status:    daemonruntime.TaskQueued,
+				Task:      daemonruntime.TruncateUTF8(text, 2000),
+				Model:     strings.TrimSpace(model),
+				Timeout:   taskTimeout.String(),
+				CreatedAt: createdAt,
+				Result: map[string]any{
+					"source":            "slack",
+					"slack_team_id":     inbound.TeamID,
+					"slack_channel_id":  inbound.ChannelID,
+					"slack_message_ts":  inbound.MessageTS,
+					"slack_thread_ts":   inbound.ThreadTS,
+					"slack_from_userID": inbound.UserID,
+				},
+			})
 		}
 		callInboundHook(ctx, logger, hooks, InboundEvent{
 			ConversationKey: msg.ConversationKey,
@@ -681,4 +743,19 @@ func normalizeThreshold(primary, secondary, def float64) float64 {
 		return 1
 	}
 	return v
+}
+
+func slackTaskID(teamID, channelID, messageTS string) string {
+	return daemonruntime.BuildTaskID("sl", teamID, channelID, messageTS)
+}
+
+func isSlackTaskContextCanceled(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(msg, "context canceled") || strings.Contains(msg, "context deadline exceeded")
 }

@@ -56,6 +56,15 @@ func initViperDefaults() {
 	viper.SetDefault("server.url", "http://127.0.0.1:8787")
 	viper.SetDefault("server.with_maep", false)
 
+	// Admin server
+	viper.SetDefault("admin.enabled", true)
+	viper.SetDefault("admin.listen", "127.0.0.1:9080")
+	viper.SetDefault("admin.base_path", "/admin")
+	viper.SetDefault("admin.static_dir", "")
+	viper.SetDefault("admin.password", "")
+	viper.SetDefault("admin.password_hash", "")
+	viper.SetDefault("admin.session_ttl", 12*time.Hour)
+
 	// Submit client
 	viper.SetDefault("submit.wait", false)
 	viper.SetDefault("submit.poll_interval", 1*time.Second)

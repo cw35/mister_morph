@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -108,6 +109,43 @@ func (s *TaskStore) Next() *queuedTask {
 
 func (s *TaskStore) QueueLen() int {
 	return len(s.queue)
+}
+
+func (s *TaskStore) List(status TaskStatus, limit int) []TaskInfo {
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	statusNorm := strings.TrimSpace(strings.ToLower(string(status)))
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make([]TaskInfo, 0, len(s.tasks))
+	for _, qt := range s.tasks {
+		if qt == nil || qt.info == nil {
+			continue
+		}
+		if statusNorm != "" && strings.ToLower(string(qt.info.Status)) != statusNorm {
+			continue
+		}
+		cp := *qt.info
+		out = append(out, cp)
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].ID > out[j].ID
+		}
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out
 }
 
 func (s *TaskStore) Update(id string, fn func(info *TaskInfo)) {

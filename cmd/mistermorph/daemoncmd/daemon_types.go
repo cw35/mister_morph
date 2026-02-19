@@ -1,41 +1,26 @@
 package daemoncmd
 
-import "time"
-
-type TaskStatus string
-
-const (
-	TaskQueued   TaskStatus = "queued"
-	TaskRunning  TaskStatus = "running"
-	TaskPending  TaskStatus = "pending"
-	TaskDone     TaskStatus = "done"
-	TaskFailed   TaskStatus = "failed"
-	TaskCanceled TaskStatus = "canceled"
+import (
+	"github.com/quailyquaily/mistermorph/internal/daemonruntime"
 )
 
-type SubmitTaskRequest struct {
-	Task    string `json:"task"`
-	Model   string `json:"model,omitempty"`
-	Timeout string `json:"timeout,omitempty"` // time.ParseDuration; optional
-}
+type TaskStatus = daemonruntime.TaskStatus
 
-type SubmitTaskResponse struct {
-	ID     string     `json:"id"`
-	Status TaskStatus `json:"status"`
-}
+const (
+	TaskQueued   TaskStatus = daemonruntime.TaskQueued
+	TaskRunning  TaskStatus = daemonruntime.TaskRunning
+	TaskPending  TaskStatus = daemonruntime.TaskPending
+	TaskDone     TaskStatus = daemonruntime.TaskDone
+	TaskFailed   TaskStatus = daemonruntime.TaskFailed
+	TaskCanceled TaskStatus = daemonruntime.TaskCanceled
+)
 
-type TaskInfo struct {
-	ID                string     `json:"id"`
-	Status            TaskStatus `json:"status"`
-	Task              string     `json:"task"`
-	Model             string     `json:"model"`
-	Timeout           string     `json:"timeout"`
-	CreatedAt         time.Time  `json:"created_at"`
-	StartedAt         *time.Time `json:"started_at,omitempty"`
-	PendingAt         *time.Time `json:"pending_at,omitempty"`
-	ResumedAt         *time.Time `json:"resumed_at,omitempty"`
-	FinishedAt        *time.Time `json:"finished_at,omitempty"`
-	ApprovalRequestID string     `json:"approval_request_id,omitempty"`
-	Error             string     `json:"error,omitempty"`
-	Result            any        `json:"result,omitempty"`
+type SubmitTaskRequest = daemonruntime.SubmitTaskRequest
+
+type SubmitTaskResponse = daemonruntime.SubmitTaskResponse
+
+type TaskInfo = daemonruntime.TaskInfo
+
+func ParseTaskStatus(raw string) (TaskStatus, bool) {
+	return daemonruntime.ParseTaskStatus(raw)
 }

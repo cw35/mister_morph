@@ -33,6 +33,8 @@ type TelegramConfig struct {
 	MaxConcurrency                       int
 	FileCacheDir                         string
 	HealthListen                         string
+	ServerAuthToken                      string
+	ServerMaxQueue                       int
 	BusMaxInFlight                       int
 	RequestTimeout                       time.Duration
 	AgentMaxSteps                        int
@@ -86,6 +88,8 @@ func TelegramConfigFromReader(r ConfigReader) TelegramConfig {
 		MaxConcurrency:                       r.GetInt("telegram.max_concurrency"),
 		FileCacheDir:                         strings.TrimSpace(r.GetString("file_cache_dir")),
 		HealthListen:                         strings.TrimSpace(r.GetString("health.listen")),
+		ServerAuthToken:                      strings.TrimSpace(r.GetString("server.auth_token")),
+		ServerMaxQueue:                       r.GetInt("server.max_queue"),
 		BusMaxInFlight:                       r.GetInt("bus.max_inflight"),
 		RequestTimeout:                       r.GetDuration("llm.request_timeout"),
 		AgentMaxSteps:                        r.GetInt("max_steps"),
@@ -173,6 +177,8 @@ func BuildTelegramRunOptions(cfg TelegramConfig, in TelegramInput) (telegramrunt
 		MaxConcurrency:                maxConcurrency,
 		FileCacheDir:                  fileCacheDir,
 		HealthListen:                  healthListen,
+		ServerAuthToken:               cfg.ServerAuthToken,
+		ServerMaxQueue:                cfg.ServerMaxQueue,
 		BusMaxInFlight:                cfg.BusMaxInFlight,
 		RequestTimeout:                cfg.RequestTimeout,
 		AgentMaxSteps:                 cfg.AgentMaxSteps,
@@ -236,6 +242,8 @@ type SlackConfig struct {
 	GlobalTaskTimeout                    time.Duration
 	MaxConcurrency                       int
 	HealthListen                         string
+	ServerAuthToken                      string
+	ServerMaxQueue                       int
 	BaseURL                              string
 	BusMaxInFlight                       int
 	RequestTimeout                       time.Duration
@@ -276,6 +284,8 @@ func SlackConfigFromReader(r ConfigReader) SlackConfig {
 		GlobalTaskTimeout:                    r.GetDuration("timeout"),
 		MaxConcurrency:                       r.GetInt("slack.max_concurrency"),
 		HealthListen:                         strings.TrimSpace(r.GetString("health.listen")),
+		ServerAuthToken:                      strings.TrimSpace(r.GetString("server.auth_token")),
+		ServerMaxQueue:                       r.GetInt("server.max_queue"),
 		BaseURL:                              strings.TrimSpace(r.GetString("slack.base_url")),
 		BusMaxInFlight:                       r.GetInt("bus.max_inflight"),
 		RequestTimeout:                       r.GetDuration("llm.request_timeout"),
@@ -343,6 +353,8 @@ func BuildSlackRunOptions(cfg SlackConfig, in SlackInput) slackruntime.RunOption
 		TaskTimeout:                   taskTimeout,
 		MaxConcurrency:                maxConcurrency,
 		HealthListen:                  healthListen,
+		ServerAuthToken:               cfg.ServerAuthToken,
+		ServerMaxQueue:                cfg.ServerMaxQueue,
 		BaseURL:                       baseURL,
 		BusMaxInFlight:                cfg.BusMaxInFlight,
 		RequestTimeout:                cfg.RequestTimeout,

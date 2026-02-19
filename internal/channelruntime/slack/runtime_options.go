@@ -18,6 +18,8 @@ type runtimeLoopOptions struct {
 	TaskTimeout                   time.Duration
 	MaxConcurrency                int
 	HealthListen                  string
+	ServerAuthToken               string
+	ServerMaxQueue                int
 	Hooks                         Hooks
 	BaseURL                       string
 	BusMaxInFlight                int
@@ -42,6 +44,8 @@ func resolveRuntimeLoopOptionsFromRunOptions(opts RunOptions) runtimeLoopOptions
 		TaskTimeout:                   opts.TaskTimeout,
 		MaxConcurrency:                opts.MaxConcurrency,
 		HealthListen:                  strings.TrimSpace(opts.HealthListen),
+		ServerAuthToken:               strings.TrimSpace(opts.ServerAuthToken),
+		ServerMaxQueue:                opts.ServerMaxQueue,
 		BaseURL:                       strings.TrimSpace(opts.BaseURL),
 		Hooks:                         opts.Hooks,
 		BusMaxInFlight:                opts.BusMaxInFlight,
@@ -63,6 +67,7 @@ func normalizeRuntimeLoopOptions(opts runtimeLoopOptions) runtimeLoopOptions {
 	opts.AllowedChannelIDs = normalizeRunStringSlice(opts.AllowedChannelIDs)
 	opts.GroupTriggerMode = strings.ToLower(strings.TrimSpace(opts.GroupTriggerMode))
 	opts.HealthListen = healthcheck.NormalizeListen(strings.TrimSpace(opts.HealthListen))
+	opts.ServerAuthToken = strings.TrimSpace(opts.ServerAuthToken)
 	opts.BaseURL = strings.TrimSpace(opts.BaseURL)
 
 	if opts.TaskTimeout <= 0 {
@@ -73,6 +78,9 @@ func normalizeRuntimeLoopOptions(opts runtimeLoopOptions) runtimeLoopOptions {
 	}
 	if opts.BusMaxInFlight <= 0 {
 		opts.BusMaxInFlight = 1024
+	}
+	if opts.ServerMaxQueue <= 0 {
+		opts.ServerMaxQueue = 100
 	}
 	if opts.RequestTimeout <= 0 {
 		opts.RequestTimeout = 90 * time.Second

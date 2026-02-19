@@ -19,6 +19,8 @@ type RunOptions struct {
 	MaxConcurrency                int
 	FileCacheDir                  string
 	HealthListen                  string
+	ServerAuthToken               string
+	ServerMaxQueue                int
 	BusMaxInFlight                int
 	RequestTimeout                time.Duration
 	AgentMaxSteps                 int

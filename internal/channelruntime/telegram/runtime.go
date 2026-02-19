@@ -20,6 +20,7 @@ import (
 	telegrambus "github.com/quailyquaily/mistermorph/internal/bus/adapters/telegram"
 	runtimeworker "github.com/quailyquaily/mistermorph/internal/channelruntime/worker"
 	"github.com/quailyquaily/mistermorph/internal/chathistory"
+	"github.com/quailyquaily/mistermorph/internal/daemonruntime"
 	"github.com/quailyquaily/mistermorph/internal/healthcheck"
 	"github.com/quailyquaily/mistermorph/internal/heartbeatutil"
 	"github.com/quailyquaily/mistermorph/internal/llmconfig"
@@ -35,6 +36,7 @@ import (
 )
 
 type telegramJob struct {
+	TaskID           string
 	ChatID           int64
 	MessageID        int64
 	ReplyToMessageID int64
@@ -118,6 +120,9 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 		pollCtx = context.Background()
 	}
 	slog.SetDefault(logger)
+
+	daemonStore := daemonruntime.NewMemoryStore(opts.ServerMaxQueue)
+
 	inprocBus, err := busruntime.StartInproc(busruntime.BootstrapOptions{
 		MaxInFlight: opts.BusMaxInFlight,
 		Logger:      logger,
@@ -321,15 +326,20 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 	defer stopWorkers()
 	healthListen := healthcheck.NormalizeListen(opts.HealthListen)
 	if healthListen != "" {
-		healthServer, err := healthcheck.StartServer(pollCtx, logger, healthListen, "telegram")
+		if strings.TrimSpace(opts.ServerAuthToken) == "" {
+			logger.Warn("telegram_daemon_server_auth_empty", "hint", "set server.auth_token so admin can read /tasks")
+		}
+		_, err := daemonruntime.StartServer(pollCtx, logger, daemonruntime.ServerOptions{
+			Listen: healthListen,
+			Routes: daemonruntime.RoutesOptions{
+				Mode:          "telegram",
+				AuthToken:     strings.TrimSpace(opts.ServerAuthToken),
+				TaskReader:    daemonStore,
+				HealthEnabled: true,
+			},
+		})
 		if err != nil {
-			logger.Warn("telegram_health_server_start_error", "addr", healthListen, "error", err.Error())
-		} else {
-			defer func() {
-				shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-				_ = healthServer.Shutdown(shutdownCtx)
-				cancel()
-			}()
+			logger.Warn("telegram_daemon_server_start_error", "addr", healthListen, "error", err.Error())
 		}
 	}
 
@@ -607,6 +617,13 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 				if !job.IsHeartbeat {
 					typingStop = startTypingTicker(workerCtx, api, chatID, "typing", 4*time.Second)
 					defer typingStop()
+					if daemonStore != nil && strings.TrimSpace(job.TaskID) != "" {
+						startedAt := time.Now().UTC()
+						daemonStore.Update(job.TaskID, func(rec *daemonruntime.TaskInfo) {
+							rec.Status = daemonruntime.TaskRunning
+							rec.StartedAt = &startedAt
+						})
+					}
 				}
 
 				runCtx, cancel := context.WithTimeout(workerCtx, taskTimeout)
@@ -616,6 +633,18 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 				if runErr != nil {
 					if workerCtx.Err() != nil {
 						return
+					}
+					if !job.IsHeartbeat && daemonStore != nil && strings.TrimSpace(job.TaskID) != "" {
+						finishedAt := time.Now().UTC()
+						failedStatus := daemonruntime.TaskFailed
+						if isTaskContextCanceled(runErr) {
+							failedStatus = daemonruntime.TaskCanceled
+						}
+						daemonStore.Update(job.TaskID, func(rec *daemonruntime.TaskInfo) {
+							rec.Status = failedStatus
+							rec.Error = strings.TrimSpace(runErr.Error())
+							rec.FinishedAt = &finishedAt
+						})
 					}
 					callErrorHook(workerCtx, logger, hooks, ErrorEvent{
 						Stage:     ErrorStageRunTask,
@@ -652,6 +681,18 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 
 				outText := formatFinalOutput(final)
 				publishText := shouldPublishTelegramText(final)
+				if !job.IsHeartbeat && daemonStore != nil && strings.TrimSpace(job.TaskID) != "" {
+					finishedAt := time.Now().UTC()
+					summary := daemonruntime.TruncateUTF8(outText, 4000)
+					daemonStore.Update(job.TaskID, func(rec *daemonruntime.TaskInfo) {
+						rec.Status = daemonruntime.TaskDone
+						rec.Error = ""
+						rec.FinishedAt = &finishedAt
+						rec.Result = map[string]any{
+							"output": summary,
+						}
+					})
+				}
 				if publishText && !job.IsHeartbeat {
 					if workerCtx.Err() != nil {
 						return
@@ -757,6 +798,7 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 			"text_len", len(text),
 		)
 		job := telegramJob{
+			TaskID:           telegramTaskID(inbound.ChatID, inbound.MessageID),
 			ChatID:           inbound.ChatID,
 			MessageID:        inbound.MessageID,
 			ReplyToMessageID: inbound.ReplyToMessageID,
@@ -773,6 +815,30 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 		}
 		if err := runtimeworker.Enqueue(ctx, workersCtx, w.Jobs, job); err != nil {
 			return err
+		}
+		if daemonStore != nil {
+			createdAt := inbound.SentAt.UTC()
+			if createdAt.IsZero() {
+				createdAt = time.Now().UTC()
+			}
+			daemonStore.Upsert(daemonruntime.TaskInfo{
+				ID:        job.TaskID,
+				Status:    daemonruntime.TaskQueued,
+				Task:      daemonruntime.TruncateUTF8(text, 2000),
+				Model:     strings.TrimSpace(model),
+				Timeout:   taskTimeout.String(),
+				CreatedAt: createdAt,
+				Result: map[string]any{
+					"source":                "telegram",
+					"telegram_chat_id":      inbound.ChatID,
+					"telegram_message_id":   inbound.MessageID,
+					"telegram_reply_to":     inbound.ReplyToMessageID,
+					"telegram_chat_type":    strings.TrimSpace(inbound.ChatType),
+					"telegram_from_user_id": inbound.FromUserID,
+					"telegram_from_name":    strings.TrimSpace(inbound.FromDisplayName),
+					"mention_users":         append([]string(nil), inbound.MentionUsers...),
+				},
+			})
 		}
 		callInboundHook(ctx, logger, hooks, InboundEvent{
 			ChatID:       inbound.ChatID,
@@ -1599,4 +1665,19 @@ func telegramOutboundKind(correlationID string) string {
 	default:
 		return "message"
 	}
+}
+
+func telegramTaskID(chatID int64, messageID int64) string {
+	return daemonruntime.BuildTaskID("tg", chatID, messageID)
+}
+
+func isTaskContextCanceled(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(msg, "context canceled") || strings.Contains(msg, "context deadline exceeded")
 }
