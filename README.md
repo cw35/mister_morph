@@ -10,6 +10,7 @@ Other languages: [简体中文](docs/zh-CN/README.md) | [日本語](docs/ja-JP/R
 - [Quickstart](#quickstart)
 - [Supported Models](#supported-models)
 - [Daemon mode](#daemon-mode)
+- [Console mode](#console-mode)
 - [Telegram bot mode](#telegram-bot-mode)
 - [Slack bot mode](#slack-bot-mode)
 - [Embedding](#embedding-to-other-projects)
@@ -169,6 +170,46 @@ mistermorph submit --server-url http://127.0.0.1:8787 --auth-token "$MISTER_MORP
   --task "Summarize this repo and write to ./summary.md"
 ```
 
+## Console mode
+
+Run a local Console web UI for runtime inspection and file management.
+
+Console currently includes:
+- task list + task detail
+- TODO files editor (`TODO.md`, `TODO.DONE.md`)
+- contacts files editor (`ACTIVE.md`, `INACTIVE.md`)
+- persona files editor (`IDENTITY.md`, `SOUL.md`)
+- system diagnostics/config view
+
+Build frontend:
+
+```bash
+cd web/console
+pnpm install
+pnpm build
+```
+
+Start daemon (task API source):
+
+```bash
+MISTER_MORPH_SERVER_AUTH_TOKEN=dev-token \
+mistermorph serve --server-auth-token dev-token
+```
+
+Start Console backend + static hosting:
+
+```bash
+MISTER_MORPH_CONSOLE_PASSWORD=secret \
+MISTER_MORPH_SERVER_AUTH_TOKEN=dev-token \
+mistermorph console serve --console-static-dir ./web/console/dist
+```
+
+Open:
+
+`http://127.0.0.1:9080/console`
+
+More details: [`web/console/README.md`](web/console/README.md).
+
 ## Embedding to other projects
 
 Two common integration options:
@@ -325,6 +366,12 @@ These arguments will dump the final system/user/tool prompts and the full LLM re
 - `--wait`
 - `--poll-interval`
 
+**console serve**
+- `--console-listen`
+- `--console-base-path`
+- `--console-static-dir`
+- `--console-session-ttl`
+
 **telegram**
 - `--telegram-bot-token`
 - `--telegram-allowed-chat-id` (repeatable)
@@ -366,6 +413,8 @@ Common env vars (these map to config keys):
 - `MISTER_MORPH_LOGGING_LEVEL`
 - `MISTER_MORPH_LOGGING_FORMAT`
 - `MISTER_MORPH_SERVER_AUTH_TOKEN`
+- `MISTER_MORPH_CONSOLE_PASSWORD`
+- `MISTER_MORPH_CONSOLE_PASSWORD_HASH`
 - `MISTER_MORPH_TELEGRAM_BOT_TOKEN`
 - `MISTER_MORPH_SLACK_BOT_TOKEN`
 - `MISTER_MORPH_SLACK_APP_TOKEN`

@@ -14,6 +14,7 @@
 - [Bus](./bus.md)
 - [Bus Implementation](./bus_impl.md)
 - [Troubleshoots](./troubleshoots.md)
+- [Console SPA](../web/console/README.md)
 
 ## Localized README
 

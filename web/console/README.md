@@ -7,6 +7,42 @@ This directory contains the Mistermorph Console SPA for `mistermorph console ser
 - UI: local `quail-ui`
 - Build: Vite (`src` -> `dist`)
 
+## Features
+
+- Dashboard: runtime overview and health.
+- Tasks: list + detail of daemon tasks.
+- TODO files: edit `TODO.md` and `TODO.DONE.md`.
+- Contacts files: edit `ACTIVE.md` and `INACTIVE.md`.
+- Persona files: edit `IDENTITY.md` and `SOUL.md`.
+- System: config snapshot + diagnostics.
+
+## API Surface (served under `/console/api`)
+
+- Auth:
+  - `POST /auth/login`
+  - `POST /auth/logout`
+  - `GET /auth/me`
+- Dashboard/system:
+  - `GET /dashboard/overview`
+  - `GET /system/health`
+  - `GET /system/config`
+  - `GET /system/diagnostics`
+- Tasks:
+  - `GET /tasks`
+  - `GET /tasks/{id}`
+- TODO files:
+  - `GET /todo/files`
+  - `GET /todo/files/{name}` (`TODO.md|TODO.DONE.md`)
+  - `PUT /todo/files/{name}`
+- Contacts files:
+  - `GET /contacts/files`
+  - `GET /contacts/files/{name}` (`ACTIVE.md|INACTIVE.md`)
+  - `PUT /contacts/files/{name}`
+- Persona files:
+  - `GET /persona/files`
+  - `GET /persona/files/{name}` (`IDENTITY.md|SOUL.md`)
+  - `PUT /persona/files/{name}`
+
 ## Build (production static)
 
 1. Build frontend to `dist`:

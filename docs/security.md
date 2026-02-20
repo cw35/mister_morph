@@ -96,7 +96,7 @@ Guard approvals are asynchronous by design:
 - Approval state is stored in file state (`<file_state_dir>/<guard.dir_name>/approvals/guard_approvals.json` by default).
 - Approval expiry is **hard-coded to 5 minutes** in M1.
 
-Daemon (`mistermorph serve`) exposes minimal admin endpoints (authenticated with `server.auth_token`):
+Daemon (`mistermorph serve`) exposes minimal management endpoints (authenticated with `server.auth_token`):
 
 - `GET /approvals/{id}` (status + metadata; never returns `resume_state`)
 - `POST /approvals/{id}/approve`

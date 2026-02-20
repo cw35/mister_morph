@@ -79,7 +79,6 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 10px;
   border-bottom: 1px solid var(--line);
   padding: 4px 2px 10px;
 }
@@ -137,7 +136,7 @@ a {
 }
 
 .sidebar {
-  padding: 8px 10px 8px 0;
+  padding: 8px 8px 8px 0;
   border-right: 1px solid var(--line);
   min-height: 100%;
 }
