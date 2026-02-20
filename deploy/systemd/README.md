@@ -5,6 +5,7 @@ Use this target when you run `mistermorph` on your own Linux VM or bare-metal ho
 ## Files
 
 - `mister-morph.service`: hardened systemd unit template
+- `mister-morph-console.service`: hardened Console API + SPA unit template
 
 ## Best for
 
@@ -23,6 +24,7 @@ Use this target when you run `mistermorph` on your own Linux VM or bare-metal ho
 
 - Binary: `/opt/morph/mistermorph`
 - Config: `/opt/morph/config.yaml`
+- Console SPA: `/opt/morph/web/console/dist`
 - Env (non-secret): `/opt/morph/morph.env`
 - Env (secret): `/opt/morph/morph.secrets.env`
 - State dir: `/var/lib/morph` (managed by `StateDirectory=morph`)
@@ -54,6 +56,7 @@ EOF
 
 sudo tee /opt/morph/morph.secrets.env >/dev/null <<'EOF'
 MISTER_MORPH_LLM_API_KEY=replace-with-real-api-key
+MISTER_MORPH_CONSOLE_PASSWORD=replace-with-console-password
 EOF
 
 sudo chmod 0640 /opt/morph/morph.env
@@ -61,7 +64,7 @@ sudo chmod 0600 /opt/morph/morph.secrets.env
 sudo chown root:morph /opt/morph/morph.env /opt/morph/morph.secrets.env
 ```
 
-4. Install and start service:
+4. Install and start daemon service:
 
 ```bash
 sudo install -m 0644 ./deploy/systemd/mister-morph.service /etc/systemd/system/mister-morph.service
@@ -75,6 +78,42 @@ sudo systemctl enable --now mister-morph
 sudo systemctl status --no-pager mister-morph
 sudo journalctl -u mister-morph -f
 ```
+
+## Optional: install Console service
+
+1. Build and place SPA assets:
+
+```bash
+cd web/console
+pnpm install
+pnpm build
+
+sudo install -d -m 0755 /opt/morph/web/console
+sudo rsync -a ./dist/ /opt/morph/web/console/dist/
+```
+
+2. Install and start Console service:
+
+```bash
+sudo install -m 0644 ./deploy/systemd/mister-morph-console.service /etc/systemd/system/mister-morph-console.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now mister-morph-console
+```
+
+3. Verify:
+
+```bash
+sudo systemctl status --no-pager mister-morph-console
+sudo journalctl -u mister-morph-console -f
+```
+
+4. Open:
+
+`http://127.0.0.1:9080/console`
+
+Notes:
+- Keep `mister-morph` daemon service running; Console reads tasks from `server.url`.
+- Ensure `MISTER_MORPH_SERVER_AUTH_TOKEN` is the same value used by daemon and console processes.
 
 ## Run mode
 
