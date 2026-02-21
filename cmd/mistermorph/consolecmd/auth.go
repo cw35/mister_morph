@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/quailyquaily/mistermorph/internal/fsstore"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -53,15 +54,73 @@ type tokenSession struct {
 	ExpiresAt time.Time
 }
 
+type persistedSessions struct {
+	Version  int               `json:"version"`
+	Sessions map[string]string `json:"sessions"`
+}
+
 type sessionStore struct {
 	mu       sync.RWMutex
+	path     string
 	sessions map[string]tokenSession
 }
 
-func newSessionStore() *sessionStore {
-	return &sessionStore{
+func newSessionStore(path string) *sessionStore {
+	store := &sessionStore{
+		path:     strings.TrimSpace(path),
 		sessions: map[string]tokenSession{},
 	}
+	store.load()
+	return store
+}
+
+func (s *sessionStore) load() {
+	if s == nil || strings.TrimSpace(s.path) == "" {
+		return
+	}
+	var payload persistedSessions
+	ok, err := fsstore.ReadJSON(s.path, &payload)
+	if err != nil || !ok {
+		return
+	}
+	now := time.Now().UTC()
+	for tokenHash, expiresAtRaw := range payload.Sessions {
+		tokenHash = strings.TrimSpace(tokenHash)
+		if tokenHash == "" {
+			continue
+		}
+		expiresAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(expiresAtRaw))
+		if err != nil {
+			continue
+		}
+		expiresAt = expiresAt.UTC()
+		if !expiresAt.After(now) {
+			continue
+		}
+		s.sessions[tokenHash] = tokenSession{ExpiresAt: expiresAt}
+	}
+}
+
+func (s *sessionStore) persistLocked() error {
+	if s == nil || strings.TrimSpace(s.path) == "" {
+		return nil
+	}
+	payload := persistedSessions{
+		Version:  1,
+		Sessions: map[string]string{},
+	}
+	for tokenHash, item := range s.sessions {
+		tokenHash = strings.TrimSpace(tokenHash)
+		if tokenHash == "" {
+			continue
+		}
+		expiresAt := item.ExpiresAt.UTC()
+		if expiresAt.IsZero() {
+			continue
+		}
+		payload.Sessions[tokenHash] = expiresAt.Format(time.RFC3339Nano)
+	}
+	return fsstore.WriteJSONAtomic(s.path, payload, fsstore.FileOptions{})
 }
 
 func (s *sessionStore) Create(ttl time.Duration) (string, time.Time, error) {
@@ -81,7 +140,13 @@ func (s *sessionStore) Create(ttl time.Duration) (string, time.Time, error) {
 	expiresAt := time.Now().UTC().Add(ttl)
 
 	s.mu.Lock()
+	s.pruneExpiredLocked(time.Now().UTC())
 	s.sessions[hash] = tokenSession{ExpiresAt: expiresAt}
+	if err := s.persistLocked(); err != nil {
+		delete(s.sessions, hash)
+		s.mu.Unlock()
+		return "", time.Time{}, err
+	}
 	s.mu.Unlock()
 
 	return token, expiresAt, nil
@@ -97,13 +162,17 @@ func (s *sessionStore) Validate(token string) (time.Time, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.pruneExpiredLocked(now)
+	changed := s.pruneExpiredLocked(now)
+	if changed {
+		_ = s.persistLocked()
+	}
 	session, ok := s.sessions[hash]
 	if !ok {
 		return time.Time{}, false
 	}
 	if !session.ExpiresAt.After(now) {
 		delete(s.sessions, hash)
+		_ = s.persistLocked()
 		return time.Time{}, false
 	}
 	return session.ExpiresAt, true
@@ -115,16 +184,23 @@ func (s *sessionStore) Delete(token string) {
 	}
 	hash := tokenHash(token)
 	s.mu.Lock()
+	_, existed := s.sessions[hash]
 	delete(s.sessions, hash)
+	if existed {
+		_ = s.persistLocked()
+	}
 	s.mu.Unlock()
 }
 
-func (s *sessionStore) pruneExpiredLocked(now time.Time) {
+func (s *sessionStore) pruneExpiredLocked(now time.Time) bool {
+	changed := false
 	for k, v := range s.sessions {
 		if !v.ExpiresAt.After(now) {
 			delete(s.sessions, k)
+			changed = true
 		}
 	}
+	return changed
 }
 
 func tokenHash(token string) string {

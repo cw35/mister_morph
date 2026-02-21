@@ -36,7 +36,7 @@ const DashboardView = {
         if (!endpointState.selectedRef) {
           return;
         }
-        const data = await runtimeApiFetch("/dashboard/overview");
+        const data = await runtimeApiFetch("/overview");
         overview.version = data.version || "-";
         overview.started_at = data.started_at || "-";
         overview.uptime_sec = toInt(data.uptime_sec, 0);

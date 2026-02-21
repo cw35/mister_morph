@@ -22,7 +22,6 @@ const SettingsView = {
     const loading = ref(false);
     const loggingOut = ref(false);
     const err = ref("");
-    const configJSON = ref("");
     const checks = ref([]);
     let tickTimer = null;
 
@@ -30,11 +29,7 @@ const SettingsView = {
       loading.value = true;
       err.value = "";
       try {
-        const [cfg, diag] = await Promise.all([
-          runtimeApiFetch("/system/config"),
-          runtimeApiFetch("/system/diagnostics"),
-        ]);
-        configJSON.value = JSON.stringify(cfg, null, 2);
+        const diag = await runtimeApiFetch("/system/diagnostics");
         checks.value = Array.isArray(diag.checks) ? diag.checks : [];
       } catch (e) {
         err.value = e.message || t("msg_load_failed");
@@ -88,7 +83,6 @@ const SettingsView = {
       loading,
       loggingOut,
       err,
-      configJSON,
       checks,
       load,
       logout,
@@ -120,7 +114,6 @@ const SettingsView = {
           <span v-if="item.detail" class="muted check-detail">{{ item.detail }}</span>
         </div>
       </div>
-      <QTextarea :modelValue="configJSON" :rows="18" :disabled="true" />
     </section>
   `,
 };

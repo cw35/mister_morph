@@ -331,9 +331,25 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 		_, err := daemonruntime.StartServer(pollCtx, logger, daemonruntime.ServerOptions{
 			Listen: serverListen,
 			Routes: daemonruntime.RoutesOptions{
-				Mode:          "telegram",
-				AuthToken:     strings.TrimSpace(opts.ServerAuthToken),
-				TaskReader:    daemonStore,
+				Mode:       "telegram",
+				AuthToken:  strings.TrimSpace(opts.ServerAuthToken),
+				TaskReader: daemonStore,
+				Overview: func(ctx context.Context) (map[string]any, error) {
+					return map[string]any{
+						"llm": map[string]any{
+							"provider": llmProviderFromDeps(d),
+							"model":    llmModelFromDeps(d),
+						},
+						"channel": map[string]any{
+							"configured":          true,
+							"telegram_configured": true,
+							"slack_configured":    false,
+							"running":             "telegram",
+							"telegram_running":    true,
+							"slack_running":       false,
+						},
+					}, nil
+				},
 				HealthEnabled: true,
 			},
 		})

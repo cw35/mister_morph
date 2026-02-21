@@ -1,33 +1,27 @@
 package consolecmd
 
 import (
-	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
-	"runtime"
-	"runtime/debug"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/quailyquaily/mistermorph/cmd/mistermorph/daemoncmd"
 	"github.com/quailyquaily/mistermorph/internal/configutil"
-	"github.com/quailyquaily/mistermorph/internal/fsstore"
 	"github.com/quailyquaily/mistermorph/internal/pathutil"
-	"github.com/quailyquaily/mistermorph/internal/statepaths"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -41,7 +35,6 @@ type serveConfig struct {
 	passwordHash string
 	endpoints    []runtimeEndpointConfig
 	stateDir     string
-	cacheDir     string
 }
 
 type runtimeEndpointConfig struct {
@@ -65,50 +58,16 @@ type runtimeEndpoint struct {
 }
 
 type server struct {
-	cfg            serveConfig
-	startedAt      time.Time
-	password       *passwordVerifier
-	sessions       *sessionStore
-	limiter        *loginLimiter
-	endpoints      []runtimeEndpoint
-	endpointByRef  map[string]runtimeEndpoint
-	guardAuditPath string
-	contactsDir    string
-	contactsActive string
-	contactsOld    string
-	identityPath   string
-	soulPath       string
-	todoWIPPath    string
-	todoDonePath   string
+	cfg           serveConfig
+	startedAt     time.Time
+	password      *passwordVerifier
+	sessions      *sessionStore
+	limiter       *loginLimiter
+	endpoints     []runtimeEndpoint
+	endpointByRef map[string]runtimeEndpoint
 }
 
-const (
-	auditDefaultLineLimit int64 = 50
-	auditMinLineLimit     int64 = 1
-	auditMaxLineLimit     int64 = 500
-	auditMaxCursorLines   int64 = 200 * 1000
-	endpointHealthTimeout       = 2 * time.Second
-)
-
-type auditFileItem struct {
-	Name      string `json:"name"`
-	Path      string `json:"path"`
-	SizeBytes int64  `json:"size_bytes"`
-	ModTime   string `json:"mod_time"`
-	Current   bool   `json:"current"`
-}
-
-type auditLogChunk struct {
-	File      string   `json:"file"`
-	Path      string   `json:"path"`
-	Exists    bool     `json:"exists"`
-	SizeBytes int64    `json:"size_bytes"`
-	Before    int64    `json:"before"`
-	From      int64    `json:"from"`
-	To        int64    `json:"to"`
-	HasOlder  bool     `json:"has_older"`
-	Lines     []string `json:"lines"`
-}
+const endpointHealthTimeout = 2 * time.Second
 
 func newServeCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -165,7 +124,6 @@ func loadServeConfig(cmd *cobra.Command) (serveConfig, error) {
 	}
 
 	stateDir := pathutil.ResolveStateDir(viper.GetString("file_state_dir"))
-	cacheDir := pathutil.ExpandHomePath(viper.GetString("file_cache_dir"))
 	var rawEndpoints []runtimeEndpointConfigRaw
 	if err := viper.UnmarshalKey("console.endpoints", &rawEndpoints); err != nil {
 		return serveConfig{}, fmt.Errorf("invalid console.endpoints: %w", err)
@@ -184,7 +142,6 @@ func loadServeConfig(cmd *cobra.Command) (serveConfig, error) {
 		passwordHash: viper.GetString("console.password_hash"),
 		endpoints:    endpoints,
 		stateDir:     stateDir,
-		cacheDir:     cacheDir,
 	}, nil
 }
 
@@ -252,6 +209,10 @@ func newServer(cfg serveConfig) (*server, error) {
 	if err != nil {
 		return nil, err
 	}
+	sessionStorePath := ""
+	if strings.TrimSpace(cfg.stateDir) != "" {
+		sessionStorePath = filepath.Join(cfg.stateDir, "console", "sessions.json")
+	}
 
 	endpoints := make([]runtimeEndpoint, 0, len(cfg.endpoints))
 	endpointByRef := make(map[string]runtimeEndpoint, len(cfg.endpoints))
@@ -266,23 +227,14 @@ func newServer(cfg serveConfig) (*server, error) {
 		endpointByRef[ep.Ref] = ep
 	}
 
-	contactsDir := statepaths.ContactsDir()
 	return &server{
-		cfg:            cfg,
-		startedAt:      time.Now().UTC(),
-		password:       password,
-		sessions:       newSessionStore(),
-		limiter:        newLoginLimiter(),
-		endpoints:      endpoints,
-		endpointByRef:  endpointByRef,
-		guardAuditPath: resolveGuardAuditPath(cfg.stateDir),
-		contactsDir:    contactsDir,
-		contactsActive: filepath.Join(contactsDir, "ACTIVE.md"),
-		contactsOld:    filepath.Join(contactsDir, "INACTIVE.md"),
-		identityPath:   filepath.Join(cfg.stateDir, "IDENTITY.md"),
-		soulPath:       filepath.Join(cfg.stateDir, "SOUL.md"),
-		todoWIPPath:    filepath.Join(cfg.stateDir, statepaths.TODOWIPFilename),
-		todoDonePath:   filepath.Join(cfg.stateDir, statepaths.TODODONEFilename),
+		cfg:           cfg,
+		startedAt:     time.Now().UTC(),
+		password:      password,
+		sessions:      newSessionStore(sessionStorePath),
+		limiter:       newLoginLimiter(),
+		endpoints:     endpoints,
+		endpointByRef: endpointByRef,
 	}, nil
 }
 
@@ -291,24 +243,10 @@ func (s *server) run() error {
 	apiPrefix := s.cfg.basePath + "/api"
 
 	mux.HandleFunc(apiPrefix+"/auth/login", s.handleLogin)
-	mux.HandleFunc(apiPrefix+"/system/health", s.handleSystemHealth)
-
 	mux.HandleFunc(apiPrefix+"/auth/logout", s.withAuth(s.handleLogout))
 	mux.HandleFunc(apiPrefix+"/auth/me", s.withAuth(s.handleAuthMe))
 	mux.HandleFunc(apiPrefix+"/endpoints", s.withAuth(s.handleEndpoints))
-	mux.HandleFunc(apiPrefix+"/dashboard/overview", s.withAuth(s.handleDashboardOverview))
-	mux.HandleFunc(apiPrefix+"/tasks", s.withAuth(s.handleTasks))
-	mux.HandleFunc(apiPrefix+"/tasks/", s.withAuth(s.handleTaskDetail))
-	mux.HandleFunc(apiPrefix+"/todo/files", s.withAuth(s.handleTODOFiles))
-	mux.HandleFunc(apiPrefix+"/todo/files/", s.withAuth(s.handleTODOFileDetail))
-	mux.HandleFunc(apiPrefix+"/contacts/files", s.withAuth(s.handleContactsFiles))
-	mux.HandleFunc(apiPrefix+"/contacts/files/", s.withAuth(s.handleContactsFileDetail))
-	mux.HandleFunc(apiPrefix+"/persona/files", s.withAuth(s.handlePersonaFiles))
-	mux.HandleFunc(apiPrefix+"/persona/files/", s.withAuth(s.handlePersonaFileDetail))
-	mux.HandleFunc(apiPrefix+"/audit/files", s.withAuth(s.handleAuditFiles))
-	mux.HandleFunc(apiPrefix+"/audit/logs", s.withAuth(s.handleAuditLogs))
-	mux.HandleFunc(apiPrefix+"/system/config", s.withAuth(s.handleSystemConfig))
-	mux.HandleFunc(apiPrefix+"/system/diagnostics", s.withAuth(s.handleSystemDiagnostics))
+	mux.HandleFunc(apiPrefix+"/proxy", s.withAuth(s.handleProxy))
 
 	mux.HandleFunc(s.cfg.basePath, s.handleSPA)
 	mux.HandleFunc(s.cfg.basePath+"/", s.handleSPA)
@@ -463,541 +401,78 @@ func (s *server) handleEndpoints(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *server) handleDashboardOverview(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+func (s *server) handleProxy(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
+
 	endpoint, err := s.resolveRuntimeEndpoint(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	var mem runtime.MemStats
-	runtime.ReadMemStats(&mem)
-	channelConfigured, telegramConfigured, slackConfigured := detectConfiguredChannelAPI()
-	channelRunning, telegramRunning, slackRunning := s.detectRunningChannelAPI(r.Context(), endpoint.Client)
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"version":    buildVersion(),
-		"started_at": s.startedAt.Format(time.RFC3339),
-		"uptime_sec": int(time.Since(s.startedAt).Seconds()),
-		"health":     "ok",
-		"llm": map[string]any{
-			"provider": strings.TrimSpace(viper.GetString("llm.provider")),
-			"model":    strings.TrimSpace(viper.GetString("llm.model")),
-		},
-		"channel": map[string]any{
-			"configured":          channelConfigured,
-			"telegram_configured": telegramConfigured,
-			"slack_configured":    slackConfigured,
-			"running":             channelRunning,
-			"telegram_running":    telegramRunning,
-			"slack_running":       slackRunning,
-		},
-		"runtime": map[string]any{
-			"go_version":       runtime.Version(),
-			"goroutines":       runtime.NumGoroutine(),
-			"heap_alloc_bytes": mem.HeapAlloc,
-			"heap_sys_bytes":   mem.HeapSys,
-			"heap_objects":     mem.HeapObjects,
-			"gc_cycles":        mem.NumGC,
-		},
-		"endpoint": map[string]any{
-			"endpoint_ref": endpoint.Ref,
-			"name":         endpoint.Name,
-			"url":          endpoint.URL,
-		},
-	})
-}
-
-func (s *server) handleSystemHealth(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	targetURI := strings.TrimSpace(r.URL.Query().Get("uri"))
+	if targetURI == "" {
+		writeError(w, http.StatusBadRequest, "missing uri")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"ok":         true,
-		"started_at": s.startedAt.Format(time.RFC3339),
-	})
-}
-
-func (s *server) handleSystemConfig(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !strings.HasPrefix(targetURI, "/") {
+		targetURI = "/" + targetURI
+	}
+	parsedURI, err := url.ParseRequestURI(targetURI)
+	if err != nil || parsedURI == nil || strings.TrimSpace(parsedURI.Path) == "" {
+		writeError(w, http.StatusBadRequest, "invalid uri")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"console": map[string]any{
-			"listen":            s.cfg.listen,
-			"base_path":         s.cfg.basePath,
-			"session_ttl":       s.cfg.sessionTTL.String(),
-			"password_set":      strings.TrimSpace(s.cfg.password) != "",
-			"password_hash_set": strings.TrimSpace(s.cfg.passwordHash) != "",
-			"endpoint_count":    len(s.endpoints),
-		},
-		"llm": map[string]any{
-			"provider": strings.TrimSpace(viper.GetString("llm.provider")),
-			"model":    strings.TrimSpace(viper.GetString("llm.model")),
-		},
-		"paths": map[string]any{
-			"file_state_dir": s.cfg.stateDir,
-			"file_cache_dir": s.cfg.cacheDir,
-			"console_static": s.cfg.staticDir,
-		},
-	})
-}
-
-func (s *server) handleSystemDiagnostics(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	if parsedURI.Host != "" || parsedURI.Scheme != "" {
+		writeError(w, http.StatusBadRequest, "invalid uri")
 		return
 	}
 
-	checks := []map[string]any{
-		diagnoseDirReadable("console_static_dir", s.cfg.staticDir),
-		diagnoseFileReadable("console_static_index", filepath.Join(s.cfg.staticDir, "index.html")),
-		diagnoseDirWritable("file_state_dir", s.cfg.stateDir),
-		diagnoseDirWritable("file_cache_dir", s.cfg.cacheDir),
-		diagnoseFileReadable("contacts_active", s.contactsActive),
-		diagnoseFileReadable("contacts_inactive", s.contactsOld),
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"started_at": s.startedAt.Format(time.RFC3339),
-		"version":    buildVersion(),
-		"checks":     checks,
-	})
-}
-
-func (s *server) handleAuditFiles(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	items, err := s.listAuditFiles()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"default_file": filepath.Base(strings.TrimSpace(s.guardAuditPath)),
-		"items":        items,
-	})
-}
-
-func (s *server) handleAuditLogs(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	fileName := strings.TrimSpace(r.URL.Query().Get("file"))
-	filePath, err := s.resolveAuditFilePath(fileName)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	limit, err := parseInt64QueryParamInRange(r.URL.Query().Get("limit"), auditDefaultLineLimit, auditMinLineLimit, auditMaxLineLimit)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid limit")
-		return
-	}
-	cursorRaw := strings.TrimSpace(r.URL.Query().Get("cursor"))
-	if cursorRaw == "" {
-		// Backward-compatible fallback for old clients that still send `before`.
-		cursorRaw = strings.TrimSpace(r.URL.Query().Get("before"))
-	}
-	cursor, err := parseInt64QueryParamInRange(cursorRaw, 0, 0, auditMaxCursorLines)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid cursor")
-		return
-	}
-	chunk, err := readAuditLogChunk(filePath, cursor, limit)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	chunk.File = filepath.Base(filePath)
-	writeJSON(w, http.StatusOK, chunk)
-}
-
-func (s *server) handleTasks(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	endpoint, err := s.resolveRuntimeEndpoint(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	statusRaw := strings.TrimSpace(r.URL.Query().Get("status"))
-	status, ok := daemoncmd.ParseTaskStatus(statusRaw)
-	if !ok {
-		writeError(w, http.StatusBadRequest, "invalid status")
-		return
-	}
-	limit := 20
-	if rawLimit := strings.TrimSpace(r.URL.Query().Get("limit")); rawLimit != "" {
-		v, err := strconv.Atoi(rawLimit)
-		if err != nil || v <= 0 {
-			writeError(w, http.StatusBadRequest, "invalid limit")
+	var body []byte
+	if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch || r.Method == http.MethodDelete {
+		body, err = io.ReadAll(io.LimitReader(r.Body, 4<<20))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
-		limit = v
 	}
-	items, err := endpoint.Client.List(r.Context(), status, limit)
+
+	status, raw, err := endpoint.Client.Proxy(r.Context(), r.Method, parsedURI.RequestURI(), body)
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSONProxyResponse(w, status, raw)
 }
 
-func (s *server) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+func writeJSONProxyResponse(w http.ResponseWriter, status int, raw []byte) {
+	setNoCacheHeaders(w.Header())
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if status <= 0 {
+		status = http.StatusInternalServerError
+	}
+	w.WriteHeader(status)
+
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		_, _ = w.Write([]byte("{}\n"))
 		return
 	}
-	endpoint, err := s.resolveRuntimeEndpoint(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	taskID := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, s.cfg.basePath+"/api/tasks/"))
-	if taskID == "" {
-		writeError(w, http.StatusBadRequest, "missing task id")
-		return
-	}
-	item, err := endpoint.Client.Get(r.Context(), taskID)
-	if err != nil {
-		status := http.StatusServiceUnavailable
-		if errors.Is(err, errTaskNotFound) {
-			status = http.StatusNotFound
+	if json.Valid(trimmed) {
+		_, _ = w.Write(trimmed)
+		if len(trimmed) > 0 && trimmed[len(trimmed)-1] != '\n' {
+			_, _ = w.Write([]byte("\n"))
 		}
-		writeError(w, status, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, item)
-}
-
-func (s *server) handleContactsFiles(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	items := []map[string]any{
-		describeContactFile("ACTIVE.md", s.contactsActive),
-		describeContactFile("INACTIVE.md", s.contactsOld),
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"items": items,
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"error": strings.TrimSpace(string(trimmed)),
 	})
-}
-
-func (s *server) handleTODOFiles(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	items := []map[string]any{
-		describeContactFile(statepaths.TODOWIPFilename, s.todoWIPPath),
-		describeContactFile(statepaths.TODODONEFilename, s.todoDonePath),
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"items": items,
-	})
-}
-
-func (s *server) handleTODOFileDetail(w http.ResponseWriter, r *http.Request) {
-	name := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, s.cfg.basePath+"/api/todo/files/"))
-	filePath, ok := s.resolveTODOFile(name)
-	if !ok {
-		writeError(w, http.StatusBadRequest, "invalid file name")
-		return
-	}
-
-	switch r.Method {
-	case http.MethodGet:
-		content, exists, err := fsstore.ReadText(filePath)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if !exists {
-			writeError(w, http.StatusNotFound, "file not found")
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"name":    name,
-			"content": content,
-		})
-		return
-
-	case http.MethodPut:
-		var req struct {
-			Content string `json:"content"`
-		}
-		if err := json.NewDecoder(io.LimitReader(r.Body, 4<<20)).Decode(&req); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid json")
-			return
-		}
-		if err := fsstore.EnsureDir(filepath.Dir(filePath), 0o700); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if err := fsstore.WriteTextAtomic(filePath, req.Content, fsstore.FileOptions{}); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"ok":   true,
-			"name": name,
-		})
-		return
-
-	default:
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-}
-
-func (s *server) handleContactsFileDetail(w http.ResponseWriter, r *http.Request) {
-	name := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, s.cfg.basePath+"/api/contacts/files/"))
-	filePath, ok := s.resolveContactsFile(name)
-	if !ok {
-		writeError(w, http.StatusBadRequest, "invalid file name")
-		return
-	}
-
-	switch r.Method {
-	case http.MethodGet:
-		content, exists, err := fsstore.ReadText(filePath)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if !exists {
-			writeError(w, http.StatusNotFound, "file not found")
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"name":    name,
-			"content": content,
-		})
-		return
-
-	case http.MethodPut:
-		var req struct {
-			Content string `json:"content"`
-		}
-		if err := json.NewDecoder(io.LimitReader(r.Body, 4<<20)).Decode(&req); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid json")
-			return
-		}
-		if err := fsstore.EnsureDir(s.contactsDir, 0o700); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if err := fsstore.WriteTextAtomic(filePath, req.Content, fsstore.FileOptions{}); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"ok":   true,
-			"name": name,
-		})
-		return
-
-	default:
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-}
-
-func (s *server) handlePersonaFiles(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	items := []map[string]any{
-		describeContactFile("IDENTITY.md", s.identityPath),
-		describeContactFile("SOUL.md", s.soulPath),
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"items": items,
-	})
-}
-
-func (s *server) handlePersonaFileDetail(w http.ResponseWriter, r *http.Request) {
-	name := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, s.cfg.basePath+"/api/persona/files/"))
-	filePath, ok := s.resolvePersonaFile(name)
-	if !ok {
-		writeError(w, http.StatusBadRequest, "invalid file name")
-		return
-	}
-
-	switch r.Method {
-	case http.MethodGet:
-		content, exists, err := fsstore.ReadText(filePath)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if !exists {
-			writeError(w, http.StatusNotFound, "file not found")
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"name":    name,
-			"content": content,
-		})
-		return
-
-	case http.MethodPut:
-		var req struct {
-			Content string `json:"content"`
-		}
-		if err := json.NewDecoder(io.LimitReader(r.Body, 4<<20)).Decode(&req); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid json")
-			return
-		}
-		if err := fsstore.EnsureDir(filepath.Dir(filePath), 0o700); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if err := fsstore.WriteTextAtomic(filePath, req.Content, fsstore.FileOptions{}); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"ok":   true,
-			"name": name,
-		})
-		return
-
-	default:
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-}
-
-func (s *server) resolveContactsFile(name string) (string, bool) {
-	switch strings.TrimSpace(strings.ToUpper(name)) {
-	case "ACTIVE.MD":
-		return s.contactsActive, true
-	case "INACTIVE.MD":
-		return s.contactsOld, true
-	default:
-		return "", false
-	}
-}
-
-func (s *server) resolveTODOFile(name string) (string, bool) {
-	switch strings.TrimSpace(strings.ToUpper(name)) {
-	case strings.ToUpper(statepaths.TODOWIPFilename):
-		return s.todoWIPPath, true
-	case strings.ToUpper(statepaths.TODODONEFilename):
-		return s.todoDonePath, true
-	default:
-		return "", false
-	}
-}
-
-func (s *server) resolvePersonaFile(name string) (string, bool) {
-	switch strings.TrimSpace(strings.ToUpper(name)) {
-	case "IDENTITY.MD":
-		return s.identityPath, true
-	case "SOUL.MD":
-		return s.soulPath, true
-	default:
-		return "", false
-	}
-}
-
-func (s *server) listAuditFiles() ([]auditFileItem, error) {
-	basePath := strings.TrimSpace(s.guardAuditPath)
-	if basePath == "" {
-		return []auditFileItem{}, nil
-	}
-
-	dirPath := filepath.Dir(basePath)
-	baseName := filepath.Base(basePath)
-
-	entries, err := os.ReadDir(dirPath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return []auditFileItem{}, nil
-		}
-		return nil, err
-	}
-
-	type sortableAuditFileItem struct {
-		item  auditFileItem
-		unixN int64
-	}
-	items := make([]sortableAuditFileItem, 0, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := strings.TrimSpace(entry.Name())
-		if name == "" {
-			continue
-		}
-		if name != baseName && !strings.HasPrefix(name, baseName+".") {
-			continue
-		}
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-		modTime := info.ModTime().UTC()
-		items = append(items, sortableAuditFileItem{
-			item: auditFileItem{
-				Name:      name,
-				Path:      filepath.Join(dirPath, name),
-				SizeBytes: info.Size(),
-				ModTime:   modTime.Format(time.RFC3339),
-				Current:   name == baseName,
-			},
-			unixN: modTime.UnixNano(),
-		})
-	}
-
-	sort.SliceStable(items, func(i, j int) bool {
-		if items[i].item.Current != items[j].item.Current {
-			return items[i].item.Current
-		}
-		if items[i].unixN != items[j].unixN {
-			return items[i].unixN > items[j].unixN
-		}
-		return items[i].item.Name > items[j].item.Name
-	})
-
-	out := make([]auditFileItem, 0, len(items))
-	for _, it := range items {
-		out = append(out, it.item)
-	}
-	return out, nil
-}
-
-func (s *server) resolveAuditFilePath(name string) (string, error) {
-	basePath := strings.TrimSpace(s.guardAuditPath)
-	if basePath == "" {
-		return "", fmt.Errorf("guard audit path is not configured")
-	}
-	baseName := filepath.Base(basePath)
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return basePath, nil
-	}
-	if strings.Contains(name, "/") || strings.Contains(name, "\\") {
-		return "", fmt.Errorf("invalid file name")
-	}
-	if name != baseName && !strings.HasPrefix(name, baseName+".") {
-		return "", fmt.Errorf("invalid file name")
-	}
-	return filepath.Clean(filepath.Join(filepath.Dir(basePath), name)), nil
 }
 
 func (s *server) handleSPA(w http.ResponseWriter, r *http.Request) {
@@ -1034,201 +509,19 @@ func (s *server) handleSPA(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filepath.Join(s.cfg.staticDir, "index.html"))
 }
 
-func buildVersion() string {
-	info, ok := debug.ReadBuildInfo()
-	if !ok || info == nil {
-		return "dev"
-	}
-	if strings.TrimSpace(info.Main.Version) == "" || strings.TrimSpace(info.Main.Version) == "(devel)" {
-		return "dev"
-	}
-	return strings.TrimSpace(info.Main.Version)
-}
-
-func detectConfiguredChannelAPI() (current string, telegramConfigured bool, slackConfigured bool) {
-	telegramConfigured = strings.TrimSpace(viper.GetString("telegram.bot_token")) != ""
-	slackConfigured = strings.TrimSpace(viper.GetString("slack.bot_token")) != "" &&
-		strings.TrimSpace(viper.GetString("slack.app_token")) != ""
-
-	switch {
-	case telegramConfigured && slackConfigured:
-		return "both", telegramConfigured, slackConfigured
-	case telegramConfigured:
-		return "telegram", telegramConfigured, slackConfigured
-	case slackConfigured:
-		return "slack", telegramConfigured, slackConfigured
-	default:
-		return "none", telegramConfigured, slackConfigured
-	}
-}
-
-func resolveGuardAuditPath(stateDir string) string {
-	configured := pathutil.ExpandHomePath(viper.GetString("guard.audit.jsonl_path"))
-	if strings.TrimSpace(configured) != "" {
-		return configured
-	}
-	guardDir := pathutil.ResolveStateChildDir(stateDir, strings.TrimSpace(viper.GetString("guard.dir_name")), "guard")
-	return filepath.Join(guardDir, "audit", "guard_audit.jsonl")
-}
-
-func parseInt64QueryParamOptional(raw string, fallback int64) (int64, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return fallback, nil
-	}
-	v, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil {
-		return 0, err
-	}
-	return v, nil
-}
-
-func parseInt64QueryParamInRange(raw string, fallback, minValue, maxValue int64) (int64, error) {
-	v, err := parseInt64QueryParamOptional(raw, fallback)
-	if err != nil {
-		return 0, err
-	}
-	if v < minValue {
-		v = minValue
-	}
-	if v > maxValue {
-		v = maxValue
-	}
-	return v, nil
-}
-
-func readAuditLogChunk(filePath string, cursor int64, limit int64) (auditLogChunk, error) {
-	chunk := auditLogChunk{
-		Path:  strings.TrimSpace(filePath),
-		Lines: []string{},
-	}
-	fd, err := os.Open(filePath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return chunk, nil
-		}
-		return chunk, err
-	}
-	defer fd.Close()
-
-	fi, err := fd.Stat()
-	if err != nil {
-		return chunk, err
-	}
-	if fi.IsDir() {
-		return chunk, fmt.Errorf("audit log path is a directory")
-	}
-
-	chunk.Exists = true
-	chunk.SizeBytes = fi.Size()
-	if chunk.SizeBytes <= 0 {
-		return chunk, nil
-	}
-	if limit <= 0 {
-		limit = auditDefaultLineLimit
-	}
-	if cursor < 0 {
-		cursor = 0
-	}
-	maxNeed := auditMaxCursorLines + auditMaxLineLimit
-	need := cursor + limit
-	if need < limit || need > maxNeed {
-		need = maxNeed
-	}
-
-	scanner := bufio.NewScanner(fd)
-	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
-	tail := make([]string, int(need))
-	var total int64
-	for scanner.Scan() {
-		line := strings.TrimSuffix(scanner.Text(), "\r")
-		if line == "" {
-			continue
-		}
-		tail[int(total%need)] = line
-		total++
-	}
-	if err := scanner.Err(); err != nil {
-		return chunk, err
-	}
-	if cursor > total {
-		cursor = total
-	}
-
-	end := total - cursor
-	if end < 0 {
-		end = 0
-	}
-	start := end - limit
-	if start < 0 {
-		start = 0
-	}
-	pageCount := end - start
-
-	chunk.Before = cursor
-	chunk.To = cursor
-	chunk.HasOlder = start > 0
-	if chunk.HasOlder {
-		chunk.From = cursor + pageCount
-	} else {
-		chunk.From = cursor
-	}
-	if pageCount <= 0 {
-		return chunk, nil
-	}
-
-	tailCount := total
-	if tailCount > need {
-		tailCount = need
-	}
-	tailStart := total - tailCount
-	localStart := start - tailStart
-	localEnd := end - tailStart
-	lines := make([]string, 0, int(pageCount))
-	for i := localStart; i < localEnd; i++ {
-		idx := i % need
-		if idx < 0 {
-			idx += need
-		}
-		lines = append(lines, tail[int(idx)])
-	}
-	chunk.Lines = lines
-	return chunk, nil
-}
-
 func (s *server) resolveRuntimeEndpoint(r *http.Request) (runtimeEndpoint, error) {
 	if s == nil || r == nil {
-		return runtimeEndpoint{}, fmt.Errorf("invalid endpoint_ref")
+		return runtimeEndpoint{}, fmt.Errorf("invalid endpoint")
 	}
-	ref := strings.TrimSpace(r.URL.Query().Get("endpoint_ref"))
+	ref := strings.TrimSpace(r.URL.Query().Get("endpoint"))
 	if ref == "" {
-		return runtimeEndpoint{}, fmt.Errorf("missing endpoint_ref")
+		return runtimeEndpoint{}, fmt.Errorf("missing endpoint")
 	}
 	endpoint, ok := s.endpointByRef[ref]
 	if !ok {
-		return runtimeEndpoint{}, fmt.Errorf("invalid endpoint_ref")
+		return runtimeEndpoint{}, fmt.Errorf("invalid endpoint")
 	}
 	return endpoint, nil
-}
-
-func (s *server) detectRunningChannelAPI(ctx context.Context, tasks *daemonTaskClient) (current string, telegramRunning bool, slackRunning bool) {
-	if tasks == nil {
-		return "unknown", false, false
-	}
-	mode, err := tasks.HealthMode(ctx)
-	if err != nil {
-		return "unknown", false, false
-	}
-	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "telegram":
-		return "telegram", true, false
-	case "slack":
-		return "slack", false, true
-	case "serve":
-		return "none", false, false
-	default:
-		return "unknown", false, false
-	}
 }
 
 func bearerToken(r *http.Request) (string, bool) {
@@ -1258,60 +551,6 @@ func clientIP(remoteAddr string) string {
 		}
 	}
 	return host
-}
-
-func describeContactFile(name, p string) map[string]any {
-	_, err := os.Stat(p)
-	return map[string]any{
-		"name":   name,
-		"path":   p,
-		"exists": err == nil,
-	}
-}
-
-func diagnoseDirReadable(id, p string) map[string]any {
-	fi, err := os.Stat(p)
-	if err != nil {
-		return map[string]any{"id": id, "ok": false, "detail": err.Error()}
-	}
-	if !fi.IsDir() {
-		return map[string]any{"id": id, "ok": false, "detail": "not a directory"}
-	}
-	return map[string]any{"id": id, "ok": true}
-}
-
-func diagnoseDirWritable(id, p string) map[string]any {
-	fi, err := os.Stat(p)
-	if err != nil {
-		return map[string]any{"id": id, "ok": false, "detail": err.Error()}
-	}
-	if !fi.IsDir() {
-		return map[string]any{"id": id, "ok": false, "detail": "not a directory"}
-	}
-	fd, err := os.CreateTemp(p, ".diag_write_*")
-	if err != nil {
-		return map[string]any{"id": id, "ok": false, "detail": err.Error()}
-	}
-	name := fd.Name()
-	_ = fd.Close()
-	_ = os.Remove(name)
-	return map[string]any{"id": id, "ok": true}
-}
-
-func diagnoseFileReadable(id, p string) map[string]any {
-	fi, err := os.Stat(p)
-	if err != nil {
-		return map[string]any{"id": id, "ok": false, "detail": err.Error()}
-	}
-	if fi.IsDir() {
-		return map[string]any{"id": id, "ok": false, "detail": "is a directory"}
-	}
-	fd, err := os.Open(p)
-	if err != nil {
-		return map[string]any{"id": id, "ok": false, "detail": err.Error()}
-	}
-	_ = fd.Close()
-	return map[string]any{"id": id, "ok": true}
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

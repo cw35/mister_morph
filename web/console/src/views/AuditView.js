@@ -1,7 +1,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import "./AuditView.css";
 
-import { apiFetch, formatBytes, formatTime, safeJSON, toBool, toInt, translate } from "../core/context";
+import { formatBytes, formatTime, runtimeApiFetch, safeJSON, toBool, toInt, translate } from "../core/context";
 
 const AUDIT_ITEMS_PER_PAGE = 50;
 
@@ -178,7 +178,7 @@ const AuditView = {
     }
 
     async function loadFiles() {
-      const data = await apiFetch("/audit/files");
+      const data = await runtimeApiFetch("/audit/files");
       const items = Array.isArray(data.items) ? data.items : [];
       fileItems.value = items
         .map((it) => {
@@ -217,7 +217,7 @@ const AuditView = {
         if (cursor !== null && cursor >= 0) {
           q.set("cursor", String(cursor));
         }
-        const data = await apiFetch(`/audit/logs?${q.toString()}`);
+        const data = await runtimeApiFetch(`/audit/logs?${q.toString()}`);
         meta.path = data.path || "";
         meta.exists = toBool(data.exists, false);
         meta.size_bytes = toInt(data.size_bytes, 0);

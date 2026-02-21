@@ -224,9 +224,25 @@ func runSlackLoop(ctx context.Context, d Dependencies, opts runtimeLoopOptions) 
 		_, err := daemonruntime.StartServer(ctx, logger, daemonruntime.ServerOptions{
 			Listen: serverListen,
 			Routes: daemonruntime.RoutesOptions{
-				Mode:          "slack",
-				AuthToken:     strings.TrimSpace(opts.ServerAuthToken),
-				TaskReader:    daemonStore,
+				Mode:       "slack",
+				AuthToken:  strings.TrimSpace(opts.ServerAuthToken),
+				TaskReader: daemonStore,
+				Overview: func(ctx context.Context) (map[string]any, error) {
+					return map[string]any{
+						"llm": map[string]any{
+							"provider": llmProviderFromDeps(d),
+							"model":    llmModelFromDeps(d),
+						},
+						"channel": map[string]any{
+							"configured":          true,
+							"telegram_configured": false,
+							"slack_configured":    true,
+							"running":             "slack",
+							"telegram_running":    false,
+							"slack_running":       true,
+						},
+					}, nil
+				},
 				HealthEnabled: true,
 			},
 		})

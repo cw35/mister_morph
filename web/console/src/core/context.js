@@ -74,8 +74,17 @@ async function runtimeApiFetch(pathname, options = {}) {
     err.status = 400;
     throw err;
   }
-  const sep = pathname.includes("?") ? "&" : "?";
-  return apiFetch(`${pathname}${sep}endpoint_ref=${encodeURIComponent(endpointRef)}`, options);
+  const uri = String(pathname || "").trim();
+  if (!uri) {
+    const err = new Error("missing uri");
+    err.status = 400;
+    throw err;
+  }
+  const normalizedURI = uri.startsWith("/") ? uri : `/${uri}`;
+  const q = new URLSearchParams();
+  q.set("endpoint", endpointRef);
+  q.set("uri", normalizedURI);
+  return apiFetch(`/proxy?${q.toString()}`, options);
 }
 
 function safeJSON(raw, fallback) {
