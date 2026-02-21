@@ -2,10 +2,40 @@
   width: min(420px, 94vw);
   margin: 14vh auto 0;
   padding: 14px;
+  overflow: visible;
+}
+
+.login-brand {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.login-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-brand-logo {
+  width: 28px;
+  height: 28px;
+}
+
+.login-brand-logo path {
+  fill: none;
+  stroke: #141414;
+  stroke-width: 1.85;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .login-title {
-  margin: 0 0 8px;
+  margin: 0;
+  text-align: center;
   font-family: var(--font-mono);
   font-size: 14px;
   font-weight: 700;
@@ -13,6 +43,19 @@
   text-transform: uppercase;
 }
 
+.login-footer {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.login-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, var(--line) 8%, var(--line) 92%, transparent 100%);
+}
+
 .login-language {
-  margin: 0 0 10px;
+  margin: 0;
+  display: flex;
+  justify-content: flex-end;
 }
