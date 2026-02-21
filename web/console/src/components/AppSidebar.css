@@ -1,0 +1,6 @@
+.sidebar {
+  padding: 8px 8px 8px 0;
+  border-right: 1px solid var(--line);
+  height: 100%;
+  min-height: 100%;
+}

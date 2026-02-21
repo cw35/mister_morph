@@ -2,6 +2,7 @@ import { useAppShell } from "../composables/useAppShell";
 import AppMobileNavDrawer from "../components/AppMobileNavDrawer";
 import AppSidebar from "../components/AppSidebar";
 import AppTopbar from "../components/AppTopbar";
+import "./AppLayout.css";
 
 const AppLayout = {
   components: {

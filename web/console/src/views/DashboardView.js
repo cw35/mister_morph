@@ -1,4 +1,5 @@
 import { onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import "./DashboardView.css";
 
 import { endpointState, formatBytes, formatTime, loadEndpoints, runtimeApiFetch, toBool, toInt, translate } from "../core/context";
 

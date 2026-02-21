@@ -1,7 +1,7 @@
 import { createApp } from "vue";
 import { QuailUI, applyTheme } from "quail-ui";
 import "quail-ui/dist/index.css";
-import "./styles.css";
+import "./styles/base.css";
 
 import AppLayout from "./layouts/AppLayout";
 import { hydrateAuth, hydrateEndpointSelection, hydrateLanguage } from "./core/context";

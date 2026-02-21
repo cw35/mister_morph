@@ -1,0 +1,18 @@
+.login-box {
+  width: min(420px, 94vw);
+  margin: 14vh auto 0;
+  padding: 14px;
+}
+
+.login-title {
+  margin: 0 0 8px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.login-language {
+  margin: 0 0 10px;
+}

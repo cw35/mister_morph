@@ -1,4 +1,5 @@
 import { computed, onMounted, reactive, ref } from "vue";
+import "./AuditView.css";
 
 import { apiFetch, formatBytes, formatTime, safeJSON, toBool, toInt, translate } from "../core/context";
 

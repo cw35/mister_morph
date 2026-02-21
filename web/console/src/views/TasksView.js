@@ -1,5 +1,6 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
+import "./TasksView.css";
 
 import { TASK_STATUS_META, endpointState, formatTime, runtimeApiFetch, translate } from "../core/context";
 

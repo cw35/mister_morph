@@ -1,5 +1,6 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
+import "./OverviewView.css";
 
 import { endpointState, loadEndpoints, setSelectedEndpointRef, toBool, translate } from "../core/context";
 

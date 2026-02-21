@@ -1,3 +1,5 @@
+import "./AppNavList.css";
+
 const AppNavList = {
   props: {
     navItems: {

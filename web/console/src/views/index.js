@@ -1,3 +1,5 @@
+import "./common.css";
+
 export { default as LoginView } from "./LoginView";
 export { default as OverviewView } from "./OverviewView";
 export { default as DashboardView } from "./DashboardView";

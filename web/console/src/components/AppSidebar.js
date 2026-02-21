@@ -1,4 +1,5 @@
 import AppNavList from "./AppNavList";
+import "./AppSidebar.css";
 
 const AppSidebar = {
   components: {

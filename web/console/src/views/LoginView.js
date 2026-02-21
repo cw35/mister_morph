@@ -1,5 +1,6 @@
 import { computed, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import "./LoginView.css";
 
 import { apiFetch, applyLanguageChange, authState, loadEndpoints, localeState, saveAuth, translate } from "../core/context";
 

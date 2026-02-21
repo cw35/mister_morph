@@ -1,3 +1,5 @@
+import "./AppTopbar.css";
+
 const AppTopbar = {
   props: {
     mobileMode: {

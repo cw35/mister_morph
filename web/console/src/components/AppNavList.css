@@ -1,0 +1,84 @@
+.sidebar-nav {
+  display: grid;
+  gap: 0;
+  height: calc(100% - var(--sidebar-vpad));
+  overflow-y: auto;
+  align-content: start;
+  padding-right: 0;
+}
+
+.sidebar-nav > * {
+  width: 100%;
+}
+
+.nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-start;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.2;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 9px 9px;
+  color: var(--text-1);
+  border: 0.5px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.nav-icon {
+  width: 14px;
+  min-width: 14px;
+  height: 14px;
+}
+
+.nav-label {
+  min-width: 0;
+}
+
+.nav-btn:focus-visible {
+  outline: 1px solid var(--q-button-primary-border);
+  outline-offset: 0;
+}
+
+.sidebar-nav .nav-btn:not(.nav-btn-active):hover,
+.sidebar-nav .nav-btn:not(.nav-btn-active):focus-visible {
+  background-color: rgba(0, 0, 0, 0.06);
+  color: var(--text-0);
+}
+
+.sidebar-nav .nav-btn.nav-btn-active {
+  background: rgba(217, 106, 43, 0.12);
+  border-color: rgba(183, 88, 34, 0.24);
+  backdrop-filter: blur(1.2px);
+  -webkit-backdrop-filter: blur(1.2px);
+  color: var(--accent-1);
+  box-shadow: none;
+  font-weight: 700;
+}
+
+.sidebar-nav .nav-btn.nav-btn-active:hover,
+.sidebar-nav .nav-btn.nav-btn-active:focus-visible {
+  background: rgba(217, 106, 43, 0.16);
+  border-color: rgba(161, 75, 27, 0.3);
+  backdrop-filter: blur(1.2px);
+  -webkit-backdrop-filter: blur(1.2px);
+  color: var(--accent-1);
+  box-shadow: none;
+}
+
+.mobile-drawer-nav {
+  display: grid;
+  gap: 4px;
+}
