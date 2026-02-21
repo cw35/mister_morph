@@ -27,12 +27,12 @@ Base path defaults to `/console`, and APIs are under `/console/api/*`.
 
 Console is split into two pieces:
 - Console backend (`mistermorph console serve`): auth + admin APIs + static SPA hosting
-- Runtime daemon API (`server.url`, default `http://127.0.0.1:8787`): source of task list/detail and mode health
+- Runtime daemon APIs (selected by `endpoint_ref`): source of task list/detail and mode health
 
 Important boundary:
 - Console does not maintain its own task database.
-- It reads tasks from the configured daemon endpoint.
-- If multiple long-running processes exist (`serve`, `telegram`, `slack`), each process has its own daemon instance/port. Console points to one `server.url` at a time.
+- It reads tasks from the endpoint selected in the UI top bar.
+- If multiple long-running processes exist (`serve`, `telegram`, `slack`), each process can be configured as one Console endpoint.
 
 ## 3) Configuration and Flags
 
@@ -47,6 +47,10 @@ console:
   password: ""
   password_hash: ""
   session_ttl: "12h"
+  endpoints:
+    - name: "Main"
+      url: "http://127.0.0.1:8787"
+      auth_token_env_ref: "MISTER_MORPH_ENDPOINT_MAIN_TOKEN"
 ```
 
 Required inputs:
@@ -56,6 +60,7 @@ Required inputs:
 Recommended env vars:
 - `MISTER_MORPH_CONSOLE_PASSWORD`
 - `MISTER_MORPH_CONSOLE_PASSWORD_HASH`
+- endpoint token envs referenced by `console.endpoints[*].auth_token_env_ref`
 
 ## 4) Auth and Security Model
 
@@ -88,6 +93,7 @@ Auth:
 - `GET /console/api/auth/me`
 
 Overview/system:
+- `GET /console/api/endpoints`
 - `GET /console/api/dashboard/overview`
 - `GET /console/api/system/health`
 - `GET /console/api/system/config`
@@ -96,6 +102,12 @@ Overview/system:
 Tasks (read-only):
 - `GET /console/api/tasks`
 - `GET /console/api/tasks/{id}`
+
+Runtime query parameter:
+- `endpoint_ref` (required):
+  - `GET /console/api/dashboard/overview`
+  - `GET /console/api/tasks`
+  - `GET /console/api/tasks/{id}`
 
 TODO files:
 - `GET /console/api/todo/files`

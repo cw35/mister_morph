@@ -15,6 +15,9 @@
   --danger: #bc4f37;
   --font-ui: "IBM Plex Sans", "Noto Sans SC", "Noto Sans JP", sans-serif;
   --font-mono: "IBM Plex Mono", monospace;
+  --topbar-height: 60px;
+  --app-shell-vpad: 0;
+  --sidebar-vpad: 16px;
   color-scheme: light;
 }
 
@@ -69,18 +72,35 @@ a {
 }
 
 .app-shell {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   margin: 0;
-  padding: 10px 12px 16px;
+  padding: 0;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding-top: var(--topbar-height);
 }
 
 .topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: nowrap;
   gap: 8px;
+  min-height: var(--topbar-height);
+  background: rgba(247, 247, 247, 0.92);
+  backdrop-filter: blur(1.2px);
+  -webkit-backdrop-filter: blur(1.2px);
   border-bottom: 1px solid var(--line);
-  padding: 4px 2px 10px;
+  padding: 8px 12px;
 }
 
 .topbar-brand {
@@ -113,21 +133,50 @@ a {
   gap: 8px;
 }
 
-.session-inline {
+.topbar-overview-trigger {
+  min-width: 36px;
+  height: 32px;
+  padding: 0 8px !important;
+}
+
+.topbar-endpoint .empty-block {
+  display: none;
+}
+
+.endpoint-selected {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.endpoint-selected-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: 0.05em;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.endpoint-selected-placeholder {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-2);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
 .workspace {
+  flex: 1 1 auto;
   display: grid;
   grid-template-columns: 210px minmax(0, 1fr);
   align-items: stretch;
   gap: 0;
-  min-height: calc(100vh - 74px);
-  min-height: calc(100dvh - 74px);
+  height: 100%;
+  min-height: calc(100vh - var(--app-shell-vpad) - var(--topbar-height));
+  min-height: calc(100dvh - var(--app-shell-vpad) - var(--topbar-height));
 }
 
 .workspace.is-mobile {
@@ -138,12 +187,17 @@ a {
 .sidebar {
   padding: 8px 8px 8px 0;
   border-right: 1px solid var(--line);
+  height: 100%;
   min-height: 100%;
 }
 
 .sidebar-nav {
   display: grid;
-  gap: 4px;
+  gap: 0;
+  height: calc(100% - var(--sidebar-vpad));
+  overflow-y: auto;
+  align-content: start;
+  padding-right: 0;
 }
 
 .sidebar-nav > * {
@@ -151,20 +205,70 @@ a {
 }
 
 .nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   justify-content: flex-start;
+  width: 100%;
   text-align: left;
   font-family: var(--font-mono);
   font-size: 12px;
-  line-height: 1;
+  line-height: 1.2;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   padding: 9px 9px;
+  color: var(--text-1);
+  border: 0.5px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
 }
 
-.sidebar .touchable.nav-btn,
-.mobile-drawer-nav .touchable.nav-btn {
-  justify-content: flex-start;
-  text-align: left;
+.nav-icon {
+  width: 14px;
+  min-width: 14px;
+  height: 14px;
+}
+
+.nav-label {
+  min-width: 0;
+}
+
+.nav-btn:focus-visible {
+  outline: 1px solid var(--q-button-primary-border);
+  outline-offset: 0;
+}
+
+.sidebar-nav .nav-btn:not(.nav-btn-active):hover,
+.sidebar-nav .nav-btn:not(.nav-btn-active):focus-visible {
+  background-color: rgba(0, 0, 0, 0.06);
+  color: var(--text-0);
+}
+
+.sidebar-nav .nav-btn.nav-btn-active {
+  background: rgba(217, 106, 43, 0.12);
+  border-color: rgba(183, 88, 34, 0.24);
+  backdrop-filter: blur(1.2px);
+  -webkit-backdrop-filter: blur(1.2px);
+  color: var(--accent-1);
+  box-shadow: none;
+  font-weight: 700;
+}
+
+.sidebar-nav .nav-btn.nav-btn-active:hover,
+.sidebar-nav .nav-btn.nav-btn-active:focus-visible {
+  background: rgba(217, 106, 43, 0.16);
+  border-color: rgba(161, 75, 27, 0.3);
+  backdrop-filter: blur(1.2px);
+  -webkit-backdrop-filter: blur(1.2px);
+  color: var(--accent-1);
+  box-shadow: none;
 }
 
 .mobile-drawer-nav {
@@ -172,8 +276,9 @@ a {
   gap: 4px;
 }
 
-.content {
-  padding: 10px 0 12px 14px;
+.content,
+.content-overview {
+  padding: 10px 12px;
   min-height: 100%;
 }
 
@@ -321,6 +426,58 @@ a {
   font-size: 12px;
 }
 
+.endpoint-overview-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+  margin: 8px 0 0;
+}
+
+.endpoint-overview-item {
+  padding: 8px 10px 12px;
+}
+
+.endpoint-overview-item.clickable {
+  cursor: pointer;
+}
+
+.endpoint-overview-item.clickable:focus-visible {
+  outline: 1px solid var(--accent-0);
+  outline-offset: 1px;
+}
+
+.endpoint-overview-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.endpoint-overview-head .channel-runtime-dot {
+  flex: 0 0 14px;
+}
+
+.endpoint-overview-name {
+  display: block;
+  font-size: 12px;
+  color: var(--text-1);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.endpoint-overview-url {
+  display: block;
+  margin-top: 2px;
+  padding-left: 20px;
+  color: var(--text-2);
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .check-list {
   display: grid;
   gap: 8px;
@@ -368,6 +525,14 @@ a {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.settings-session {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-2);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .audit-meta {
@@ -508,27 +673,13 @@ pre {
     min-height: auto;
   }
 
-  .content {
-    padding: 10px 0 12px;
+  .content,
+  .content-overview {
+    padding: 10px 12px;
   }
 }
 
 @media (max-width: 860px) {
-  .topbar {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-
-  .topbar-brand {
-    width: 100%;
-  }
-
-  .topbar-actions {
-    width: 100%;
-    justify-content: space-between;
-  }
-
   .task-row {
     grid-template-columns: 1fr;
     gap: 6px;
@@ -546,15 +697,12 @@ pre {
 }
 
 @media (max-width: 620px) {
-  .app-shell {
-    padding: 8px;
-  }
-
   .tool-item {
     min-width: 140px;
   }
 
-  .content {
+  .content,
+  .content-overview {
     padding: 10px;
   }
 
@@ -562,8 +710,12 @@ pre {
     grid-template-columns: 1fr;
   }
 
-  .session-inline {
-    display: none;
+  .endpoint-overview-list {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-session {
+    width: 100%;
   }
 
   .settings-toolbar-right {

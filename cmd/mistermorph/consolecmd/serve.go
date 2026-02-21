@@ -1,9 +1,11 @@
 package consolecmd
 
 import (
-	"bytes"
+	"bufio"
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +20,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/quailyquaily/mistermorph/cmd/mistermorph/daemoncmd"
@@ -36,10 +39,29 @@ type serveConfig struct {
 	sessionTTL   time.Duration
 	password     string
 	passwordHash string
-	daemonURL    string
-	daemonToken  string
+	endpoints    []runtimeEndpointConfig
 	stateDir     string
 	cacheDir     string
+}
+
+type runtimeEndpointConfig struct {
+	Ref       string
+	Name      string
+	URL       string
+	AuthToken string
+}
+
+type runtimeEndpointConfigRaw struct {
+	Name            string `mapstructure:"name"`
+	URL             string `mapstructure:"url"`
+	AuthTokenEnvRef string `mapstructure:"auth_token_env_ref"`
+}
+
+type runtimeEndpoint struct {
+	Ref    string
+	Name   string
+	URL    string
+	Client *daemonTaskClient
 }
 
 type server struct {
@@ -48,7 +70,8 @@ type server struct {
 	password       *passwordVerifier
 	sessions       *sessionStore
 	limiter        *loginLimiter
-	tasks          *daemonTaskClient
+	endpoints      []runtimeEndpoint
+	endpointByRef  map[string]runtimeEndpoint
 	guardAuditPath string
 	contactsDir    string
 	contactsActive string
@@ -60,9 +83,11 @@ type server struct {
 }
 
 const (
-	auditDefaultWindowBytes int64 = 128 * 1024
-	auditMinWindowBytes     int64 = 4 * 1024
-	auditMaxWindowBytes     int64 = 2 * 1024 * 1024
+	auditDefaultLineLimit int64 = 50
+	auditMinLineLimit     int64 = 1
+	auditMaxLineLimit     int64 = 500
+	auditMaxCursorLines   int64 = 200 * 1000
+	endpointHealthTimeout       = 2 * time.Second
 )
 
 type auditFileItem struct {
@@ -141,8 +166,14 @@ func loadServeConfig(cmd *cobra.Command) (serveConfig, error) {
 
 	stateDir := pathutil.ResolveStateDir(viper.GetString("file_state_dir"))
 	cacheDir := pathutil.ExpandHomePath(viper.GetString("file_cache_dir"))
-	daemonURL := strings.TrimRight(strings.TrimSpace(viper.GetString("server.url")), "/")
-	daemonToken := strings.TrimSpace(viper.GetString("server.auth_token"))
+	var rawEndpoints []runtimeEndpointConfigRaw
+	if err := viper.UnmarshalKey("console.endpoints", &rawEndpoints); err != nil {
+		return serveConfig{}, fmt.Errorf("invalid console.endpoints: %w", err)
+	}
+	endpoints, err := resolveRuntimeEndpoints(rawEndpoints, os.LookupEnv)
+	if err != nil {
+		return serveConfig{}, err
+	}
 
 	return serveConfig{
 		listen:       listen,
@@ -151,8 +182,7 @@ func loadServeConfig(cmd *cobra.Command) (serveConfig, error) {
 		sessionTTL:   sessionTTL,
 		password:     viper.GetString("console.password"),
 		passwordHash: viper.GetString("console.password_hash"),
-		daemonURL:    daemonURL,
-		daemonToken:  daemonToken,
+		endpoints:    endpoints,
 		stateDir:     stateDir,
 		cacheDir:     cacheDir,
 	}, nil
@@ -173,11 +203,69 @@ func normalizeBasePath(raw string) (string, error) {
 	return strings.TrimRight(v, "/"), nil
 }
 
+func resolveRuntimeEndpoints(raw []runtimeEndpointConfigRaw, lookupEnv func(string) (string, bool)) ([]runtimeEndpointConfig, error) {
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("missing console.endpoints (configure at least one endpoint)")
+	}
+	if lookupEnv == nil {
+		lookupEnv = os.LookupEnv
+	}
+
+	endpoints := make([]runtimeEndpointConfig, 0, len(raw))
+	refSet := make(map[string]struct{}, len(raw))
+	for i, item := range raw {
+		name := strings.TrimSpace(item.Name)
+		url := strings.TrimRight(strings.TrimSpace(item.URL), "/")
+		envRef := strings.TrimSpace(item.AuthTokenEnvRef)
+		if name == "" || url == "" || envRef == "" {
+			return nil, fmt.Errorf("invalid console.endpoints[%d]: name, url, auth_token_env_ref are required", i)
+		}
+		token, ok := lookupEnv(envRef)
+		token = strings.TrimSpace(token)
+		if !ok || token == "" {
+			return nil, fmt.Errorf("missing endpoint token env %q for console.endpoints[%d]", envRef, i)
+		}
+
+		ref := buildRuntimeEndpointRef(name, url, envRef)
+		if _, exists := refSet[ref]; exists {
+			return nil, fmt.Errorf("duplicate console endpoint at index %d", i)
+		}
+		refSet[ref] = struct{}{}
+
+		endpoints = append(endpoints, runtimeEndpointConfig{
+			Ref:       ref,
+			Name:      name,
+			URL:       url,
+			AuthToken: token,
+		})
+	}
+	return endpoints, nil
+}
+
+func buildRuntimeEndpointRef(name, url, envRef string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(name) + "\n" + strings.TrimSpace(url) + "\n" + strings.TrimSpace(envRef)))
+	return "ep_" + hex.EncodeToString(sum[:8])
+}
+
 func newServer(cfg serveConfig) (*server, error) {
 	password, err := newPasswordVerifier(cfg.password, cfg.passwordHash)
 	if err != nil {
 		return nil, err
 	}
+
+	endpoints := make([]runtimeEndpoint, 0, len(cfg.endpoints))
+	endpointByRef := make(map[string]runtimeEndpoint, len(cfg.endpoints))
+	for _, item := range cfg.endpoints {
+		ep := runtimeEndpoint{
+			Ref:    item.Ref,
+			Name:   item.Name,
+			URL:    item.URL,
+			Client: newDaemonTaskClient(item.URL, item.AuthToken),
+		}
+		endpoints = append(endpoints, ep)
+		endpointByRef[ep.Ref] = ep
+	}
+
 	contactsDir := statepaths.ContactsDir()
 	return &server{
 		cfg:            cfg,
@@ -185,7 +273,8 @@ func newServer(cfg serveConfig) (*server, error) {
 		password:       password,
 		sessions:       newSessionStore(),
 		limiter:        newLoginLimiter(),
-		tasks:          newDaemonTaskClient(cfg.daemonURL, cfg.daemonToken),
+		endpoints:      endpoints,
+		endpointByRef:  endpointByRef,
 		guardAuditPath: resolveGuardAuditPath(cfg.stateDir),
 		contactsDir:    contactsDir,
 		contactsActive: filepath.Join(contactsDir, "ACTIVE.md"),
@@ -206,6 +295,7 @@ func (s *server) run() error {
 
 	mux.HandleFunc(apiPrefix+"/auth/logout", s.withAuth(s.handleLogout))
 	mux.HandleFunc(apiPrefix+"/auth/me", s.withAuth(s.handleAuthMe))
+	mux.HandleFunc(apiPrefix+"/endpoints", s.withAuth(s.handleEndpoints))
 	mux.HandleFunc(apiPrefix+"/dashboard/overview", s.withAuth(s.handleDashboardOverview))
 	mux.HandleFunc(apiPrefix+"/tasks", s.withAuth(s.handleTasks))
 	mux.HandleFunc(apiPrefix+"/tasks/", s.withAuth(s.handleTaskDetail))
@@ -324,15 +414,69 @@ func (s *server) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *server) handleEndpoints(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	type endpointSnapshot struct {
+		Ref       string
+		Name      string
+		URL       string
+		Connected bool
+		Mode      string
+	}
+
+	snapshots := make([]endpointSnapshot, len(s.endpoints))
+	var wg sync.WaitGroup
+	for i, ep := range s.endpoints {
+		wg.Add(1)
+		go func(i int, ep runtimeEndpoint) {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(r.Context(), endpointHealthTimeout)
+			mode, err := ep.Client.HealthMode(ctx)
+			cancel()
+			snapshots[i] = endpointSnapshot{
+				Ref:       ep.Ref,
+				Name:      ep.Name,
+				URL:       ep.URL,
+				Connected: err == nil,
+				Mode:      mode,
+			}
+		}(i, ep)
+	}
+	wg.Wait()
+
+	items := make([]map[string]any, 0, len(snapshots))
+	for _, item := range snapshots {
+		items = append(items, map[string]any{
+			"endpoint_ref": item.Ref,
+			"name":         item.Name,
+			"url":          item.URL,
+			"connected":    item.Connected,
+			"mode":         item.Mode,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": items,
+	})
+}
+
 func (s *server) handleDashboardOverview(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
+	endpoint, err := s.resolveRuntimeEndpoint(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 	channelConfigured, telegramConfigured, slackConfigured := detectConfiguredChannelAPI()
-	channelRunning, telegramRunning, slackRunning := s.detectRunningChannelAPI(r.Context())
+	channelRunning, telegramRunning, slackRunning := s.detectRunningChannelAPI(r.Context(), endpoint.Client)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"version":    buildVersion(),
@@ -358,6 +502,11 @@ func (s *server) handleDashboardOverview(w http.ResponseWriter, r *http.Request)
 			"heap_sys_bytes":   mem.HeapSys,
 			"heap_objects":     mem.HeapObjects,
 			"gc_cycles":        mem.NumGC,
+		},
+		"endpoint": map[string]any{
+			"endpoint_ref": endpoint.Ref,
+			"name":         endpoint.Name,
+			"url":          endpoint.URL,
 		},
 	})
 }
@@ -385,6 +534,7 @@ func (s *server) handleSystemConfig(w http.ResponseWriter, r *http.Request) {
 			"session_ttl":       s.cfg.sessionTTL.String(),
 			"password_set":      strings.TrimSpace(s.cfg.password) != "",
 			"password_hash_set": strings.TrimSpace(s.cfg.passwordHash) != "",
+			"endpoint_count":    len(s.endpoints),
 		},
 		"llm": map[string]any{
 			"provider": strings.TrimSpace(viper.GetString("llm.provider")),
@@ -446,17 +596,22 @@ func (s *server) handleAuditLogs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	maxBytes, err := parseInt64QueryParamInRange(r.URL.Query().Get("max_bytes"), auditDefaultWindowBytes, auditMinWindowBytes, auditMaxWindowBytes)
+	limit, err := parseInt64QueryParamInRange(r.URL.Query().Get("limit"), auditDefaultLineLimit, auditMinLineLimit, auditMaxLineLimit)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid max_bytes")
+		writeError(w, http.StatusBadRequest, "invalid limit")
 		return
 	}
-	before, err := parseInt64QueryParamOptional(r.URL.Query().Get("before"), -1)
+	cursorRaw := strings.TrimSpace(r.URL.Query().Get("cursor"))
+	if cursorRaw == "" {
+		// Backward-compatible fallback for old clients that still send `before`.
+		cursorRaw = strings.TrimSpace(r.URL.Query().Get("before"))
+	}
+	cursor, err := parseInt64QueryParamInRange(cursorRaw, 0, 0, auditMaxCursorLines)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid before")
+		writeError(w, http.StatusBadRequest, "invalid cursor")
 		return
 	}
-	chunk, err := readAuditLogChunk(filePath, before, maxBytes)
+	chunk, err := readAuditLogChunk(filePath, cursor, limit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -468,6 +623,11 @@ func (s *server) handleAuditLogs(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleTasks(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	endpoint, err := s.resolveRuntimeEndpoint(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	statusRaw := strings.TrimSpace(r.URL.Query().Get("status"))
@@ -485,7 +645,7 @@ func (s *server) handleTasks(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = v
 	}
-	items, err := s.tasks.List(r.Context(), status, limit)
+	items, err := endpoint.Client.List(r.Context(), status, limit)
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, err.Error())
 		return
@@ -498,12 +658,17 @@ func (s *server) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
+	endpoint, err := s.resolveRuntimeEndpoint(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	taskID := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, s.cfg.basePath+"/api/tasks/"))
 	if taskID == "" {
 		writeError(w, http.StatusBadRequest, "missing task id")
 		return
 	}
-	item, err := s.tasks.Get(r.Context(), taskID)
+	item, err := endpoint.Client.Get(r.Context(), taskID)
 	if err != nil {
 		status := http.StatusServiceUnavailable
 		if errors.Is(err, errTaskNotFound) {
@@ -932,7 +1097,7 @@ func parseInt64QueryParamInRange(raw string, fallback, minValue, maxValue int64)
 	return v, nil
 }
 
-func readAuditLogChunk(filePath string, before int64, maxBytes int64) (auditLogChunk, error) {
+func readAuditLogChunk(filePath string, cursor int64, limit int64) (auditLogChunk, error) {
 	chunk := auditLogChunk{
 		Path:  strings.TrimSpace(filePath),
 		Lines: []string{},
@@ -959,68 +1124,98 @@ func readAuditLogChunk(filePath string, before int64, maxBytes int64) (auditLogC
 	if chunk.SizeBytes <= 0 {
 		return chunk, nil
 	}
-	if before <= 0 || before > chunk.SizeBytes {
-		before = chunk.SizeBytes
+	if limit <= 0 {
+		limit = auditDefaultLineLimit
 	}
-	start := before - maxBytes
+	if cursor < 0 {
+		cursor = 0
+	}
+	maxNeed := auditMaxCursorLines + auditMaxLineLimit
+	need := cursor + limit
+	if need < limit || need > maxNeed {
+		need = maxNeed
+	}
+
+	scanner := bufio.NewScanner(fd)
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	tail := make([]string, int(need))
+	var total int64
+	for scanner.Scan() {
+		line := strings.TrimSuffix(scanner.Text(), "\r")
+		if line == "" {
+			continue
+		}
+		tail[int(total%need)] = line
+		total++
+	}
+	if err := scanner.Err(); err != nil {
+		return chunk, err
+	}
+	if cursor > total {
+		cursor = total
+	}
+
+	end := total - cursor
+	if end < 0 {
+		end = 0
+	}
+	start := end - limit
 	if start < 0 {
 		start = 0
 	}
-	windowBytes := before - start
-	if windowBytes <= 0 {
-		chunk.Before = before
-		chunk.From = before
-		chunk.To = before
-		chunk.HasOlder = before > 0
+	pageCount := end - start
+
+	chunk.Before = cursor
+	chunk.To = cursor
+	chunk.HasOlder = start > 0
+	if chunk.HasOlder {
+		chunk.From = cursor + pageCount
+	} else {
+		chunk.From = cursor
+	}
+	if pageCount <= 0 {
 		return chunk, nil
 	}
 
-	buf := make([]byte, windowBytes)
-	n, err := fd.ReadAt(buf, start)
-	if err != nil && !errors.Is(err, io.EOF) {
-		return chunk, err
+	tailCount := total
+	if tailCount > need {
+		tailCount = need
 	}
-	buf = buf[:n]
-
-	if start > 0 {
-		idx := bytes.IndexByte(buf, '\n')
-		if idx >= 0 {
-			start += int64(idx + 1)
-			buf = buf[idx+1:]
-		} else {
-			start = before
-			buf = buf[:0]
+	tailStart := total - tailCount
+	localStart := start - tailStart
+	localEnd := end - tailStart
+	lines := make([]string, 0, int(pageCount))
+	for i := localStart; i < localEnd; i++ {
+		idx := i % need
+		if idx < 0 {
+			idx += need
 		}
+		lines = append(lines, tail[int(idx)])
 	}
-
-	chunk.Before = before
-	chunk.From = start
-	chunk.To = before
-	chunk.HasOlder = start > 0
-	chunk.Lines = splitAuditLines(buf)
+	chunk.Lines = lines
 	return chunk, nil
 }
 
-func splitAuditLines(buf []byte) []string {
-	if len(buf) == 0 {
-		return []string{}
+func (s *server) resolveRuntimeEndpoint(r *http.Request) (runtimeEndpoint, error) {
+	if s == nil || r == nil {
+		return runtimeEndpoint{}, fmt.Errorf("invalid endpoint_ref")
 	}
-	parts := bytes.Split(buf, []byte{'\n'})
-	lines := make([]string, 0, len(parts))
-	for _, part := range parts {
-		if len(part) == 0 {
-			continue
-		}
-		lines = append(lines, strings.TrimSuffix(string(part), "\r"))
+	ref := strings.TrimSpace(r.URL.Query().Get("endpoint_ref"))
+	if ref == "" {
+		return runtimeEndpoint{}, fmt.Errorf("missing endpoint_ref")
 	}
-	return lines
+	endpoint, ok := s.endpointByRef[ref]
+	if !ok {
+		return runtimeEndpoint{}, fmt.Errorf("invalid endpoint_ref")
+	}
+	return endpoint, nil
 }
 
-func (s *server) detectRunningChannelAPI(ctx context.Context) (current string, telegramRunning bool, slackRunning bool) {
-	if s == nil || s.tasks == nil {
+func (s *server) detectRunningChannelAPI(ctx context.Context, tasks *daemonTaskClient) (current string, telegramRunning bool, slackRunning bool) {
+	if tasks == nil {
 		return "unknown", false, false
 	}
-	mode, err := s.tasks.HealthMode(ctx)
+	mode, err := tasks.HealthMode(ctx)
 	if err != nil {
 		return "unknown", false, false
 	}

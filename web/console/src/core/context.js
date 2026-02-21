@@ -1,0 +1,198 @@
+import { applyLanguageChange, currentLocale, hydrateLanguage, localeState, setLanguage, translate } from "../i18n";
+import { authState, authValid, clearAuth, hydrateAuth, saveAuth } from "../stores";
+import {
+  endpointState,
+  ensureEndpointSelection,
+  hydrateEndpointSelection,
+  setSelectedEndpointRef,
+} from "../stores";
+
+const BASE_PATH = "/console";
+const API_BASE = `${BASE_PATH}/api`;
+
+const TASK_STATUS_META = [
+  { titleKey: "status_all", value: "" },
+  { titleKey: "status_queued", value: "queued" },
+  { titleKey: "status_running", value: "running" },
+  { titleKey: "status_pending", value: "pending" },
+  { titleKey: "status_done", value: "done" },
+  { titleKey: "status_failed", value: "failed" },
+  { titleKey: "status_canceled", value: "canceled" },
+];
+
+async function apiFetch(pathname, options = {}) {
+  const method = options.method || "GET";
+  const headers = { ...(options.headers || {}) };
+  if (!options.noAuth && authState.token) {
+    headers.Authorization = `Bearer ${authState.token}`;
+  }
+  let body = options.body;
+  if (body !== undefined && body !== null && typeof body !== "string") {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify(body);
+  }
+
+  const resp = await fetch(`${API_BASE}${pathname}`, {
+    method,
+    headers,
+    body,
+    cache: "no-store",
+  });
+  const raw = await resp.text();
+  const parsed = raw ? safeJSON(raw, { error: raw }) : {};
+  if (!resp.ok) {
+    if (resp.status === 401 && !options.noAuth) {
+      clearAuth();
+    }
+    const err = new Error(parsed.error || `HTTP ${resp.status}`);
+    err.status = resp.status;
+    throw err;
+  }
+  return parsed;
+}
+
+async function loadEndpoints() {
+  const data = await apiFetch("/endpoints");
+  const items = Array.isArray(data.items)
+    ? data.items.map((item) => ({
+        endpoint_ref: item && typeof item.endpoint_ref === "string" ? item.endpoint_ref : "",
+        name: item && typeof item.name === "string" ? item.name : "",
+        url: item && typeof item.url === "string" ? item.url : "",
+        connected: toBool(item && item.connected, false),
+        mode: item && typeof item.mode === "string" ? item.mode : "",
+      }))
+    : [];
+  endpointState.items = items.filter((item) => item.endpoint_ref);
+  ensureEndpointSelection();
+  return endpointState.items;
+}
+
+async function runtimeApiFetch(pathname, options = {}) {
+  const endpointRef = endpointState.selectedRef.trim();
+  if (!endpointRef) {
+    const err = new Error(translate("msg_select_endpoint"));
+    err.status = 400;
+    throw err;
+  }
+  const sep = pathname.includes("?") ? "&" : "?";
+  return apiFetch(`${pathname}${sep}endpoint_ref=${encodeURIComponent(endpointRef)}`, options);
+}
+
+function safeJSON(raw, fallback) {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
+function formatTime(ts) {
+  if (!ts) {
+    return "-";
+  }
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) {
+    return ts;
+  }
+  return d.toLocaleString(currentLocale());
+}
+
+function formatRemainingUntil(ts) {
+  if (!ts) {
+    return translate("ttl_unknown");
+  }
+  const ms = new Date(ts).getTime() - Date.now();
+  if (!Number.isFinite(ms)) {
+    return translate("ttl_invalid");
+  }
+  if (ms <= 0) {
+    return translate("ttl_expired");
+  }
+  const totalMinutes = Math.floor(ms / 60000);
+  if (totalMinutes < 60) {
+    return translate("ttl_min_left", { m: totalMinutes });
+  }
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours < 24) {
+    return translate("ttl_hour_left", { h: hours, m: minutes });
+  }
+  const days = Math.floor(hours / 24);
+  const hourPart = hours % 24;
+  return translate("ttl_day_left", { d: days, h: hourPart });
+}
+
+function toInt(value, fallback = 0) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return fallback;
+  }
+  return Math.trunc(n);
+}
+
+function toBool(value, fallback = false) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value !== 0;
+  }
+  if (typeof value === "string") {
+    const v = value.trim().toLowerCase();
+    if (v === "true" || v === "1" || v === "yes" || v === "on") {
+      return true;
+    }
+    if (v === "false" || v === "0" || v === "no" || v === "off") {
+      return false;
+    }
+  }
+  return fallback;
+}
+
+function formatBytes(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) {
+    return "-";
+  }
+  if (n < 1024) {
+    return `${Math.trunc(n)} B`;
+  }
+  const units = ["KiB", "MiB", "GiB", "TiB"];
+  let v = n;
+  let idx = -1;
+  while (v >= 1024 && idx < units.length - 1) {
+    v /= 1024;
+    idx += 1;
+  }
+  const digits = v >= 100 ? 0 : v >= 10 ? 1 : 2;
+  return `${v.toFixed(digits)} ${units[idx]}`;
+}
+
+export {
+  BASE_PATH,
+  localeState,
+  translate,
+  applyLanguageChange,
+  currentLocale,
+  setLanguage,
+  hydrateLanguage,
+  TASK_STATUS_META,
+  authState,
+  authValid,
+  saveAuth,
+  clearAuth,
+  hydrateAuth,
+  endpointState,
+  setSelectedEndpointRef,
+  hydrateEndpointSelection,
+  apiFetch,
+  loadEndpoints,
+  ensureEndpointSelection,
+  runtimeApiFetch,
+  safeJSON,
+  formatTime,
+  formatRemainingUntil,
+  toInt,
+  toBool,
+  formatBytes,
+};

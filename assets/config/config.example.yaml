@@ -271,6 +271,15 @@ console:
   password_hash: "" # or set via MISTER_MORPH_CONSOLE_PASSWORD_HASH
   # Session TTL for console bearer token.
   session_ttl: "12h"
+  # Runtime endpoints shown in Console endpoint selector.
+  # Each endpoint token is read from process environment via auth_token_env_ref.
+  endpoints:
+    - name: "Telegram Instance"
+      url: "http://127.0.0.1:8787"
+      auth_token_env_ref: "MISTER_MORPH_ENDPOINT_TELEGRAM_TOKEN"
+    - name: "Slack Instance"
+      url: "http://127.0.0.1:8788"
+      auth_token_env_ref: "MISTER_MORPH_ENDPOINT_SLACK_TOKEN"
 
 # Telegram bot mode (`mistermorph telegram`).
 telegram:

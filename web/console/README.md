@@ -15,7 +15,8 @@ Stack:
 ## Runtime Notes
 
 - Console APIs are served under `/console/api`.
-- Console task views read from the daemon endpoint configured by `server.url` (default `http://127.0.0.1:8787`).
+- Runtime views (`Overview`, `Tasks`) read from the endpoint selected in the top bar.
+- Runtime endpoints are configured under `console.endpoints` in `config.yaml`.
 - Console itself does not persist task history.
 
 ## Features
@@ -53,6 +54,7 @@ Auth:
 - `GET /auth/me`
 
 Dashboard/system:
+- `GET /endpoints`
 - `GET /dashboard/overview`
 - `GET /system/health`
 - `GET /system/config`
@@ -61,6 +63,12 @@ Dashboard/system:
 Tasks:
 - `GET /tasks`
 - `GET /tasks/{id}`
+
+Runtime query parameter:
+- `endpoint_ref` is required for:
+  - `GET /dashboard/overview`
+  - `GET /tasks`
+  - `GET /tasks/{id}`
 
 TODO files:
 - `GET /todo/files`
@@ -109,9 +117,19 @@ go run ./cmd/mistermorph serve --server-auth-token dev-token
 3. Start console backend + static hosting:
 
 ```bash
+MISTER_MORPH_ENDPOINT_MAIN_TOKEN=dev-token \
 MISTER_MORPH_CONSOLE_PASSWORD=secret \
-MISTER_MORPH_SERVER_AUTH_TOKEN=dev-token \
 go run ./cmd/mistermorph console serve --console-static-dir ./web/console/dist
+```
+
+Example `config.yaml` snippet:
+
+```yaml
+console:
+  endpoints:
+    - name: "Main"
+      url: "http://127.0.0.1:8787"
+      auth_token_env_ref: "MISTER_MORPH_ENDPOINT_MAIN_TOKEN"
 ```
 
 4. Open:

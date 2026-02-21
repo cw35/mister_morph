@@ -1,0 +1,10 @@
+export { default as LoginView } from "./LoginView";
+export { default as OverviewView } from "./OverviewView";
+export { default as DashboardView } from "./DashboardView";
+export { default as TasksView } from "./TasksView";
+export { default as TaskDetailView } from "./TaskDetailView";
+export { default as AuditView } from "./AuditView";
+export { default as ContactsFilesView } from "./ContactsFilesView";
+export { default as TODOFilesView } from "./TODOFilesView";
+export { default as PersonaFilesView } from "./PersonaFilesView";
+export { default as SettingsView } from "./SettingsView";

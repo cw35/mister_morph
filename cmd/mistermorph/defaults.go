@@ -63,6 +63,7 @@ func initViperDefaults() {
 	viper.SetDefault("console.password", "")
 	viper.SetDefault("console.password_hash", "")
 	viper.SetDefault("console.session_ttl", 12*time.Hour)
+	viper.SetDefault("console.endpoints", []map[string]any{})
 
 	// Submit client
 	viper.SetDefault("submit.wait", false)
