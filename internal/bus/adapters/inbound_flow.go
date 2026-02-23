@@ -39,7 +39,7 @@ func NewInboundFlow(opts InboundFlowOptions) (*InboundFlow, error) {
 	}
 	channel := strings.ToLower(strings.TrimSpace(opts.Channel))
 	switch channel {
-	case channels.Telegram, channels.MAEP, channels.Slack, channels.Discord:
+	case channels.Telegram, channels.Slack, channels.Discord:
 	default:
 		return nil, fmt.Errorf("unsupported channel: %q", opts.Channel)
 	}

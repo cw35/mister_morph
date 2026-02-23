@@ -23,7 +23,6 @@
 这个项目值得关注的原因：
 
 - 🧩 **可复用的 Go 核心**：既能把 Agent 当 CLI 运行，也能以库或子进程的方式嵌入到其他应用。
-- 🤝 **Mesh Agent Exchange Protocol（MAEP）**：如果你和伙伴各自运行多个 Agent，且希望它们互相通信，可以使用 MAEP。它是一个带信任状态与审计轨迹的 P2P 协议（见 [../maep.md](../maep.md)，WIP）。
 - 🔒 **严肃的默认安全策略**：基于 profile 的凭据注入、Guard 脱敏、出站策略控制、带审计轨迹的异步审批（见 [../security.md](../security.md)）。
 - 🧰 **实用的 Skills 系统**：可从 `file_state_dir/skills` 发现并注入 `SKILL.md`，支持简单的 on/off 控制（见 [../skills.md](../skills.md)）。
 - 📚 **对新手友好**：这是一个以学习为导向的 Agent 项目；`docs/` 里有详细设计文档，也提供了 `--inspect-prompt`、`--inspect-request` 等实用调试工具。

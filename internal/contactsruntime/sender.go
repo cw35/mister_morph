@@ -18,20 +18,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/quailyquaily/mistermorph/contacts"
 	busruntime "github.com/quailyquaily/mistermorph/internal/bus"
-	maepbus "github.com/quailyquaily/mistermorph/internal/bus/adapters/maep"
 	slackbus "github.com/quailyquaily/mistermorph/internal/bus/adapters/slack"
 	telegrambus "github.com/quailyquaily/mistermorph/internal/bus/adapters/telegram"
-	"github.com/quailyquaily/mistermorph/internal/pathutil"
 	"github.com/quailyquaily/mistermorph/internal/slackclient"
-	"github.com/quailyquaily/mistermorph/internal/statepaths"
-	"github.com/quailyquaily/mistermorph/maep"
 )
 
 const defaultTelegramBaseURL = "https://api.telegram.org"
 const defaultSlackBaseURL = "https://slack.com/api"
 
 type SenderOptions struct {
-	MAEPDir          string
 	TelegramBotToken string
 	TelegramBaseURL  string
 	SlackBotToken    string
@@ -41,18 +36,14 @@ type SenderOptions struct {
 }
 
 type RoutingSender struct {
-	maepNode         *maep.Node
 	bus              *busruntime.Inproc
 	telegramDelivery *telegrambus.DeliveryAdapter
 	slackDelivery    *slackbus.DeliveryAdapter
-	maepDelivery     *maepbus.DeliveryAdapter
 	telegramClient   *http.Client
 	slackPoster      *slackclient.Client
 	telegramBaseURL  string
 	telegramBotToken string
-	maepDir          string
 	logger           *slog.Logger
-	maepMu           sync.Mutex
 	pendingMu        sync.Mutex
 	pending          map[string]chan deliveryResult
 	closeOnce        sync.Once
@@ -67,12 +58,6 @@ type deliveryResult struct {
 func NewRoutingSender(ctx context.Context, opts SenderOptions) (*RoutingSender, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("context is required")
-	}
-	dir := strings.TrimSpace(opts.MAEPDir)
-	if dir == "" {
-		dir = statepaths.MAEPDir()
-	} else {
-		dir = pathutil.ExpandHomePath(dir)
 	}
 
 	logger := opts.Logger
@@ -108,7 +93,6 @@ func NewRoutingSender(ctx context.Context, opts SenderOptions) (*RoutingSender, 
 		telegramBaseURL:  baseURL,
 		telegramBotToken: strings.TrimSpace(opts.TelegramBotToken),
 		slackPoster:      slackclient.New(&http.Client{Timeout: 30 * time.Second}, slackBaseURL, strings.TrimSpace(opts.SlackBotToken)),
-		maepDir:          dir,
 		logger:           logger,
 		pending:          make(map[string]chan deliveryResult),
 	}
@@ -147,12 +131,6 @@ func NewRoutingSender(ctx context.Context, opts SenderOptions) (*RoutingSender, 
 			accepted, deduped, deliverErr = sender.telegramDelivery.Deliver(deliverCtx, msg)
 		case busruntime.ChannelSlack:
 			accepted, deduped, deliverErr = sender.slackDelivery.Deliver(deliverCtx, msg)
-		case busruntime.ChannelMAEP:
-			if err := sender.ensureMAEPDelivery(deliverCtx); err != nil {
-				deliverErr = err
-				break
-			}
-			accepted, deduped, deliverErr = sender.maepDelivery.Deliver(deliverCtx, msg)
 		default:
 			deliverErr = fmt.Errorf("unsupported outbound channel: %s", msg.Channel)
 		}
@@ -183,9 +161,6 @@ func (s *RoutingSender) Close() error {
 		if s.bus != nil {
 			_ = s.bus.Close()
 		}
-		if s.maepNode != nil {
-			_ = s.maepNode.Close()
-		}
 		s.pendingMu.Lock()
 		for id, ch := range s.pending {
 			delete(s.pending, id)
@@ -196,35 +171,6 @@ func (s *RoutingSender) Close() error {
 		}
 		s.pendingMu.Unlock()
 	})
-	return nil
-}
-
-func (s *RoutingSender) ensureMAEPDelivery(ctx context.Context) error {
-	if s == nil {
-		return fmt.Errorf("sender is required")
-	}
-	s.maepMu.Lock()
-	defer s.maepMu.Unlock()
-	if s.maepDelivery != nil && s.maepNode != nil {
-		return nil
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	svc := maep.NewService(maep.NewFileStore(s.maepDir))
-	node, err := maep.NewNode(ctx, svc, maep.NodeOptions{DialOnly: true, Logger: s.logger})
-	if err != nil {
-		return err
-	}
-	delivery, err := maepbus.NewDeliveryAdapter(maepbus.DeliveryAdapterOptions{
-		Node: node,
-	})
-	if err != nil {
-		_ = node.Close()
-		return err
-	}
-	s.maepNode = node
-	s.maepDelivery = delivery
 	return nil
 }
 
@@ -261,52 +207,9 @@ func (s *RoutingSender) Send(ctx context.Context, contact contacts.Contact, deci
 			return false, false, resolveErr
 		}
 		return s.publishTelegram(ctx, target, decision)
-	case contacts.ChannelMAEP:
-		return s.publishMAEP(ctx, contact, decision)
 	default:
 		return false, false, fmt.Errorf("unsupported delivery channel: %s", channel)
 	}
-}
-
-func (s *RoutingSender) publishMAEP(ctx context.Context, contact contacts.Contact, decision contacts.ShareDecision) (bool, bool, error) {
-	if s == nil || s.bus == nil {
-		return false, false, fmt.Errorf("sender bus is not configured")
-	}
-	peerID := strings.TrimSpace(decision.PeerID)
-	if peerID == "" {
-		peerID = resolveContactMAEPPeerID(contact)
-	}
-	if peerID == "" {
-		return false, false, fmt.Errorf("maep peer_id is required")
-	}
-	idempotencyKey := strings.TrimSpace(decision.IdempotencyKey)
-	if idempotencyKey == "" {
-		return false, false, fmt.Errorf("idempotency_key is required")
-	}
-	topic := contacts.ShareTopic
-	now := time.Now().UTC()
-	payloadRaw, err := buildEnvelopePayload(decision, decision.ContentType, decision.PayloadBase64, now)
-	if err != nil {
-		return false, false, err
-	}
-	payloadBase64 := base64.RawURLEncoding.EncodeToString(payloadRaw)
-	conversationKey, err := busruntime.BuildMAEPPeerConversationKey(peerID)
-	if err != nil {
-		return false, false, err
-	}
-	msg := busruntime.BusMessage{
-		ID:              "bus_" + uuid.NewString(),
-		Direction:       busruntime.DirectionOutbound,
-		Channel:         busruntime.ChannelMAEP,
-		Topic:           topic,
-		ConversationKey: conversationKey,
-		ParticipantKey:  peerID,
-		IdempotencyKey:  idempotencyKey,
-		CorrelationID:   "contactsruntime:maep:" + idempotencyKey,
-		PayloadBase64:   payloadBase64,
-		CreatedAt:       now,
-	}
-	return s.publishAndAwait(ctx, msg)
 }
 
 func (s *RoutingSender) publishTelegram(ctx context.Context, target any, decision contacts.ShareDecision) (bool, bool, error) {
@@ -460,23 +363,6 @@ func (s *RoutingSender) dropPending(msgID string) {
 	s.pendingMu.Unlock()
 }
 
-func buildMAEPDataPushRequest(decision contacts.ShareDecision, now time.Time) (maep.DataPushRequest, error) {
-	now = now.UTC()
-	req := maep.DataPushRequest{
-		Topic:          contacts.ShareTopic,
-		ContentType:    strings.TrimSpace(decision.ContentType),
-		PayloadBase64:  strings.TrimSpace(decision.PayloadBase64),
-		IdempotencyKey: strings.TrimSpace(decision.IdempotencyKey),
-	}
-	envelopePayload, err := buildEnvelopePayload(decision, req.ContentType, req.PayloadBase64, now)
-	if err != nil {
-		return maep.DataPushRequest{}, err
-	}
-	req.ContentType = "application/json"
-	req.PayloadBase64 = base64.RawURLEncoding.EncodeToString(envelopePayload)
-	return req, nil
-}
-
 func buildEnvelopePayload(decision contacts.ShareDecision, contentType string, payloadBase64 string, now time.Time) ([]byte, error) {
 	text, extras, err := decodeEnvelopeTextAndExtras(contentType, payloadBase64)
 	if err != nil {
@@ -492,7 +378,7 @@ func buildEnvelopePayload(decision contacts.ShareDecision, contentType string, p
 		"sent_at":    now.Format(time.RFC3339),
 	}
 	sessionID := strings.TrimSpace(extras["session_id"])
-	if maep.IsDialogueTopic(contacts.ShareTopic) && sessionID == "" {
+	if sessionID == "" {
 		return nil, fmt.Errorf("session_id is required for dialogue topics")
 	}
 	if sessionID != "" {
@@ -934,33 +820,4 @@ func chatTypeFromChatID(chatID int64) string {
 		return "supergroup"
 	}
 	return "private"
-}
-
-func resolveContactMAEPPeerID(contact contacts.Contact) string {
-	if _, peerID := splitMAEPNodeID(contact.MAEPNodeID); peerID != "" {
-		return peerID
-	}
-	if _, peerID := splitMAEPNodeID(contact.ContactID); peerID != "" {
-		return peerID
-	}
-	return ""
-}
-
-func splitMAEPNodeID(raw string) (string, string) {
-	value := strings.TrimSpace(raw)
-	if value == "" {
-		return "", ""
-	}
-	lower := strings.ToLower(value)
-	if strings.Contains(value, ":") && !strings.HasPrefix(lower, "maep:") {
-		return "", ""
-	}
-	if strings.HasPrefix(lower, "maep:") {
-		peerID := strings.TrimSpace(value[len("maep:"):])
-		if peerID == "" {
-			return "", ""
-		}
-		return "maep:" + peerID, peerID
-	}
-	return "maep:" + value, value
 }

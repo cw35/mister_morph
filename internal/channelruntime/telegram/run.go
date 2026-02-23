@@ -12,8 +12,6 @@ type RunOptions struct {
 	GroupTriggerMode              string
 	AddressingConfidenceThreshold float64
 	AddressingInterjectThreshold  float64
-	WithMAEP                      bool
-	MAEPListenAddrs               []string
 	PollTimeout                   time.Duration
 	TaskTimeout                   time.Duration
 	MaxConcurrency                int
@@ -36,8 +34,6 @@ type RunOptions struct {
 	MemoryInjectionEnabled        bool
 	MemoryInjectionMaxItems       int
 	SecretsRequireSkillProfiles   bool
-	MAEPMaxTurnsPerSession        int
-	MAEPSessionCooldown           time.Duration
 	Hooks                         Hooks
 	InspectPrompt                 bool
 	InspectRequest                bool

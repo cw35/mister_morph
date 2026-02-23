@@ -30,20 +30,23 @@ cooldown_until: "1970-01-01T00:00:00Z" # RFC3339 format
 last_interaction_at: "1970-01-01T00:00:00Z" # RFC3339 format
 ```
 
-## Example Agent Contact
+## Example Slack Contact
 
 ```yaml
-contact_id: "maep:12D3KooWabc123xyz001"
-nickname: "Miss Morph"
-kind: "agent"
-channel: "maep"
-maep_node_id: "maep:12D3KooWabc123xyz001"
-maep_dial_address: "/ip4/..."
-persona_brief: "A mysterious agent with a knack for gathering intelligence and solving complex problems"
+contact_id: "slack:T12345:U67890"
+nickname: "Jane Doe"
+kind: "human"
+channel: "slack"
+slack_team_id: "T12345"
+slack_user_id: "U67890"
+slack_dm_channel_id: "D024BE91L"
+slack_channel_ids:
+  - "C024BE91L"
+persona_brief: "Product manager focusing on roadmap coordination"
 topic_preferences:
-  - "espionage"
+  - "product"
   - "technology"
-  - "mystery"
+  - "planning"
 cooldown_until: "1970-01-01T00:00:00Z"
 last_interaction_at: "1970-01-01T00:00:00Z"
 ```

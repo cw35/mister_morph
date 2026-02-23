@@ -36,10 +36,6 @@ func initViperDefaults() {
 	viper.SetDefault("skills.mode", "on")
 	viper.SetDefault("skills.dir_name", "skills")
 
-	// MAEP
-	viper.SetDefault("maep.dir_name", "maep")
-	viper.SetDefault("maep.listen_addrs", []string{})
-
 	// Bus
 	viper.SetDefault("bus.max_inflight", 1024)
 
@@ -51,7 +47,6 @@ func initViperDefaults() {
 	// Daemon server
 	viper.SetDefault("server.listen", "127.0.0.1:8787")
 	viper.SetDefault("server.max_queue", 100)
-	viper.SetDefault("server.with_maep", false)
 
 	// Console server
 	viper.SetDefault("console.enabled", true)
@@ -73,7 +68,6 @@ func initViperDefaults() {
 	viper.SetDefault("telegram.addressing_confidence_threshold", 0.6)
 	viper.SetDefault("telegram.addressing_interject_threshold", 0.6)
 	viper.SetDefault("telegram.max_concurrency", 3)
-	viper.SetDefault("telegram.with_maep", false)
 
 	// Slack
 	viper.SetDefault("slack.base_url", "https://slack.com/api")

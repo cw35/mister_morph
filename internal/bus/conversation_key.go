@@ -31,13 +31,9 @@ func BuildDiscordChannelConversationKey(channelID string) (string, error) {
 	return BuildConversationKey(ChannelDiscord, channelID)
 }
 
-func BuildMAEPPeerConversationKey(peerID string) (string, error) {
-	return BuildConversationKey(ChannelMAEP, peerID)
-}
-
 func isValidChannel(channel Channel) bool {
 	switch channel {
-	case ChannelTelegram, ChannelSlack, ChannelDiscord, ChannelMAEP:
+	case ChannelTelegram, ChannelSlack, ChannelDiscord:
 		return true
 	default:
 		return false
@@ -48,8 +44,6 @@ func conversationKeyPrefix(channel Channel) string {
 	switch channel {
 	case ChannelTelegram:
 		return "tg"
-	case ChannelMAEP:
-		return "maep"
 	case ChannelSlack:
 		return "slack"
 	case ChannelDiscord:

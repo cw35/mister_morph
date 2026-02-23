@@ -103,7 +103,6 @@ func loadRuntimeSnapshotFromReader(v *viper.Viper) runtimeSnapshot {
 			TODOPathWIP:                   pathutil.ResolveStateFile(fileStateDir, statepaths.TODOWIPFilename),
 			TODOPathDone:                  pathutil.ResolveStateFile(fileStateDir, statepaths.TODODONEFilename),
 			ContactsDir:                   pathutil.ResolveStateChildDir(fileStateDir, strings.TrimSpace(v.GetString("contacts.dir_name")), "contacts"),
-			MAEPDir:                       pathutil.ResolveStateChildDir(fileStateDir, strings.TrimSpace(v.GetString("maep.dir_name")), "maep"),
 			TelegramBotToken:              strings.TrimSpace(v.GetString("telegram.bot_token")),
 			TelegramBaseURL:               "https://api.telegram.org",
 			SlackBotToken:                 strings.TrimSpace(v.GetString("slack.bot_token")),

@@ -20,7 +20,6 @@ const (
 	memorySummariesPromptBlockTitle = "Memory Summaries"
 	groupUsernamesPromptBlockTitle  = "Group Usernames"
 	TelegramRuntimePromptBlockTitle = "Telegram Policies"
-	MAEPReplyPromptBlockTitle       = "MAEP Policies"
 )
 
 //go:embed prompts/block_plan_create.tmpl
@@ -28,9 +27,6 @@ var planCreateBlockTemplateSource string
 
 //go:embed prompts/telegram_block.tmpl
 var telegramRuntimePromptBlockTemplateSource string
-
-//go:embed prompts/maep_block.tmpl
-var maepReplyPromptBlockSource string
 
 var telegramRuntimePromptBlockTemplate = prompttmpl.MustParse(
 	"telegram_runtime_block",
@@ -142,18 +138,4 @@ func AppendTelegramRuntimeBlocks(spec *agent.PromptSpec, isGroup bool, mentionUs
 			Content: strings.Join(mentionUsers, "\n"),
 		})
 	}
-}
-
-func AppendMAEPReplyPolicyBlock(spec *agent.PromptSpec) {
-	if spec == nil {
-		return
-	}
-	content := strings.TrimSpace(maepReplyPromptBlockSource)
-	if content == "" {
-		return
-	}
-	spec.Blocks = append(spec.Blocks, agent.PromptBlock{
-		Title:   MAEPReplyPromptBlockTitle,
-		Content: content,
-	})
 }

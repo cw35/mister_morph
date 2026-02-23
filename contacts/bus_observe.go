@@ -3,21 +3,12 @@ package contacts
 import (
 	"context"
 	"fmt"
-	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	busruntime "github.com/quailyquaily/mistermorph/internal/bus"
-	"github.com/quailyquaily/mistermorph/maep"
 )
-
-var maepMentionTokenPattern = regexp.MustCompile(`(?i)\bmaep:[a-z0-9]+\b`)
-
-type MAEPPeerLookup interface {
-	GetContactByPeerID(ctx context.Context, peerID string) (maep.Contact, bool, error)
-}
 
 type observedContactCandidate struct {
 	PrimaryContactID    string
@@ -33,13 +24,11 @@ type observedContactCandidate struct {
 	SlackUserID         string
 	SlackDMChannelID    string
 	SlackChannelIDs     []string
-	MAEPNodeID          string
-	MAEPDialAddress     string
 }
 
 // ObserveInboundBusMessage inspects inbound bus messages and updates contacts.
 // It is best-effort for object extraction and follows merge rules for bus-driven contact updates.
-func (s *Service) ObserveInboundBusMessage(ctx context.Context, msg busruntime.BusMessage, maepLookup MAEPPeerLookup, now time.Time) error {
+func (s *Service) ObserveInboundBusMessage(ctx context.Context, msg busruntime.BusMessage, now time.Time) error {
 	if s == nil || !s.ready() {
 		return fmt.Errorf("nil contacts service")
 	}
@@ -56,8 +45,6 @@ func (s *Service) ObserveInboundBusMessage(ctx context.Context, msg busruntime.B
 		return s.observeTelegramInboundBusMessage(ctx, msg, now)
 	case busruntime.ChannelSlack:
 		return s.observeSlackInboundBusMessage(ctx, msg, now)
-	case busruntime.ChannelMAEP:
-		return s.observeMAEPInboundBusMessage(ctx, msg, maepLookup, now)
 	default:
 		return nil
 	}
@@ -108,41 +95,6 @@ func (s *Service) observeTelegramInboundBusMessage(ctx context.Context, msg busr
 			TelegramChatType: chatType,
 			TelegramIsSender: false,
 		})
-	}
-
-	return s.applyObservedCandidates(ctx, candidates, now)
-}
-
-func (s *Service) observeMAEPInboundBusMessage(ctx context.Context, msg busruntime.BusMessage, maepLookup MAEPPeerLookup, now time.Time) error {
-	peerID := resolveMAEPPeerIDFromBusMessage(msg)
-	if peerID == "" {
-		return nil
-	}
-
-	candidates := make([]observedContactCandidate, 0, 4)
-	senderCandidate, err := makeMAEPCandidate(ctx, peerID, maepLookup)
-	if err != nil {
-		return err
-	}
-	if senderCandidate.PrimaryContactID != "" {
-		candidates = append(candidates, senderCandidate)
-	}
-
-	env, envErr := msg.Envelope()
-	if envErr == nil {
-		for _, mentionedPeerID := range extractMAEPMentionPeerIDs(env.Text) {
-			if strings.EqualFold(mentionedPeerID, peerID) {
-				continue
-			}
-			mentionedCandidate, mentionErr := makeMAEPCandidate(ctx, mentionedPeerID, maepLookup)
-			if mentionErr != nil {
-				return mentionErr
-			}
-			if mentionedCandidate.PrimaryContactID == "" {
-				continue
-			}
-			candidates = append(candidates, mentionedCandidate)
-		}
 	}
 
 	return s.applyObservedCandidates(ctx, candidates, now)
@@ -204,101 +156,6 @@ func (s *Service) observeSlackInboundBusMessage(ctx context.Context, msg busrunt
 	}
 
 	return s.applyObservedCandidates(ctx, candidates, now)
-}
-
-func makeMAEPCandidate(ctx context.Context, peerID string, maepLookup MAEPPeerLookup) (observedContactCandidate, error) {
-	peerID = strings.TrimSpace(peerID)
-	if peerID == "" {
-		return observedContactCandidate{}, nil
-	}
-
-	nodeID := ""
-	dialAddress := ""
-	nickname := ""
-	if maepLookup != nil {
-		maepContact, found, err := maepLookup.GetContactByPeerID(ctx, peerID)
-		if err != nil {
-			return observedContactCandidate{}, err
-		}
-		if found {
-			nodeID = strings.TrimSpace(maepContact.NodeID)
-			if len(maepContact.Addresses) > 0 {
-				dialAddress = strings.TrimSpace(maepContact.Addresses[0])
-			}
-			nickname = strings.TrimSpace(maepContact.DisplayName)
-		}
-	}
-
-	primaryID := chooseMAEPBusinessContactID(nodeID, peerID)
-	candidate := observedContactCandidate{
-		PrimaryContactID: primaryID,
-		Kind:             KindAgent,
-		Channel:          ChannelMAEP,
-		Nickname:         nickname,
-		MAEPNodeID:       strings.TrimSpace(nodeID),
-		MAEPDialAddress:  dialAddress,
-	}
-	peerContactID := "maep:" + peerID
-	if !strings.EqualFold(strings.TrimSpace(primaryID), peerContactID) {
-		candidate.AlternateContactIDs = append(candidate.AlternateContactIDs, peerContactID)
-	}
-	return candidate, nil
-}
-
-func chooseMAEPBusinessContactID(nodeID string, peerID string) string {
-	nodeID = strings.TrimSpace(nodeID)
-	if nodeID != "" {
-		normalizedNodeID, _ := splitMAEPNodeID(nodeID)
-		return normalizedNodeID
-	}
-	peerID = strings.TrimSpace(peerID)
-	if peerID == "" {
-		return ""
-	}
-	return "maep:" + peerID
-}
-
-func resolveMAEPPeerIDFromBusMessage(msg busruntime.BusMessage) string {
-	peerID := strings.TrimSpace(msg.ParticipantKey)
-	if peerID != "" {
-		return peerID
-	}
-	key := strings.TrimSpace(msg.ConversationKey)
-	if !strings.HasPrefix(strings.ToLower(key), "maep:") {
-		return ""
-	}
-	return strings.TrimSpace(key[len("maep:"):])
-}
-
-func extractMAEPMentionPeerIDs(text string) []string {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return nil
-	}
-	matches := maepMentionTokenPattern.FindAllString(text, -1)
-	if len(matches) == 0 {
-		return nil
-	}
-	seen := map[string]bool{}
-	out := make([]string, 0, len(matches))
-	for _, raw := range matches {
-		normalizedNodeID, peerID := splitMAEPNodeID(raw)
-		_ = normalizedNodeID
-		peerID = strings.TrimSpace(peerID)
-		if peerID == "" {
-			continue
-		}
-		key := strings.ToLower(peerID)
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		out = append(out, peerID)
-	}
-	sort.Slice(out, func(i, j int) bool {
-		return strings.ToLower(out[i]) < strings.ToLower(out[j])
-	})
-	return out
 }
 
 func slackContactIDFromUser(teamID, userID string) string {
@@ -393,12 +250,6 @@ func (s *Service) upsertObservedCandidate(ctx context.Context, candidate observe
 		}
 		applyObservedTelegramMerge(&existing, candidate)
 		applyObservedSlackMerge(&existing, candidate)
-		if strings.TrimSpace(existing.MAEPNodeID) == "" {
-			existing.MAEPNodeID = strings.TrimSpace(candidate.MAEPNodeID)
-		}
-		if strings.TrimSpace(existing.MAEPDialAddress) == "" {
-			existing.MAEPDialAddress = strings.TrimSpace(candidate.MAEPDialAddress)
-		}
 		existing.LastInteractionAt = &lastInteraction
 		_, err := s.UpsertContact(ctx, existing, now)
 		return err
@@ -414,8 +265,6 @@ func (s *Service) upsertObservedCandidate(ctx context.Context, candidate observe
 		SlackUserID:       normalizeSlackID(candidate.SlackUserID),
 		SlackDMChannelID:  normalizeSlackID(candidate.SlackDMChannelID),
 		SlackChannelIDs:   normalizeStringSlice(candidate.SlackChannelIDs),
-		MAEPNodeID:        strings.TrimSpace(candidate.MAEPNodeID),
-		MAEPDialAddress:   strings.TrimSpace(candidate.MAEPDialAddress),
 		LastInteractionAt: &lastInteraction,
 	}
 	applyObservedTelegramMerge(&contact, candidate)

@@ -222,10 +222,6 @@ func (s *Service) SendDecision(ctx context.Context, now time.Time, decision Shar
 		return ShareOutcome{}, fmt.Errorf("contact not found: %s", decision.ContactID)
 	}
 	decision.ContactID = contact.ContactID
-
-	if strings.TrimSpace(decision.PeerID) == "" {
-		decision.PeerID = resolveMAEPPeerID(contact)
-	}
 	decision.ContentType = strings.TrimSpace(decision.ContentType)
 	if decision.ContentType == "" {
 		decision.ContentType = "application/json"
@@ -348,9 +344,6 @@ func ResolveDecisionChannel(contact Contact, decision ShareDecision) (string, er
 	}
 	if hasTelegramTarget(contact) {
 		return ChannelTelegram, nil
-	}
-	if strings.TrimSpace(decision.PeerID) != "" || resolveMAEPPeerID(contact) != "" {
-		return ChannelMAEP, nil
 	}
 	return "", fmt.Errorf("unable to resolve delivery channel for contact_id=%s", contact.ContactID)
 }
@@ -542,10 +535,6 @@ func deriveContactID(contact Contact) string {
 			}
 		}
 	}
-	if v := strings.TrimSpace(contact.MAEPNodeID); v != "" {
-		nodeID, _ := splitMAEPNodeID(v)
-		return nodeID
-	}
 	if contact.Channel == ChannelTelegram {
 		ids := append([]int64(nil), contact.TGGroupChatIDs...)
 		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
@@ -554,16 +543,6 @@ func deriveContactID(contact Contact) string {
 				return "tg:" + strconv.FormatInt(id, 10)
 			}
 		}
-	}
-	return ""
-}
-
-func resolveMAEPPeerID(contact Contact) string {
-	if _, peerID := splitMAEPNodeID(contact.MAEPNodeID); peerID != "" {
-		return peerID
-	}
-	if _, peerID := splitMAEPNodeID(contact.ContactID); peerID != "" {
-		return peerID
 	}
 	return ""
 }

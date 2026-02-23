@@ -63,7 +63,6 @@ type registrySnapshot struct {
 	TODOPathWIP                   string
 	TODOPathDone                  string
 	ContactsDir                   string
-	MAEPDir                       string
 	TelegramBotToken              string
 	TelegramBaseURL               string
 	SlackBotToken                 string

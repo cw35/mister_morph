@@ -12,8 +12,6 @@ func TestResolveRuntimeLoopOptionsFromRunOptions(t *testing.T) {
 		GroupTriggerMode:              "smart",
 		AddressingConfidenceThreshold: 0.7,
 		AddressingInterjectThreshold:  0.3,
-		WithMAEP:                      true,
-		MAEPListenAddrs:               []string{" /ip4/1 ", "/ip4/1"},
 		PollTimeout:                   45 * time.Second,
 		TaskTimeout:                   2 * time.Minute,
 		MaxConcurrency:                5,
@@ -34,8 +32,6 @@ func TestResolveRuntimeLoopOptionsFromRunOptions(t *testing.T) {
 		MemoryInjectionEnabled:        true,
 		MemoryInjectionMaxItems:       10,
 		SecretsRequireSkillProfiles:   true,
-		MAEPMaxTurnsPerSession:        9,
-		MAEPSessionCooldown:           12 * time.Hour,
 		InspectPrompt:                 true,
 		InspectRequest:                true,
 	})
@@ -44,9 +40,6 @@ func TestResolveRuntimeLoopOptionsFromRunOptions(t *testing.T) {
 	}
 	if len(got.AllowedChatIDs) != 2 || got.AllowedChatIDs[0] != 1 || got.AllowedChatIDs[1] != 2 {
 		t.Fatalf("allowed chat ids = %#v, want [1 2]", got.AllowedChatIDs)
-	}
-	if len(got.MAEPListenAddrs) != 1 || got.MAEPListenAddrs[0] != "/ip4/1" {
-		t.Fatalf("maep listen addrs = %#v, want [/ip4/1]", got.MAEPListenAddrs)
 	}
 	if got.BusMaxInFlight != 2048 || got.AgentMaxSteps != 20 || got.FileCacheMaxFiles != 200 {
 		t.Fatalf("resolved options mismatch: %#v", got)
@@ -99,12 +92,6 @@ func TestNormalizeRuntimeLoopOptionsDefaults(t *testing.T) {
 	}
 	if got.MemoryInjectionMaxItems != 50 {
 		t.Fatalf("memory injection max items = %d, want 50", got.MemoryInjectionMaxItems)
-	}
-	if got.MAEPMaxTurnsPerSession != 6 {
-		t.Fatalf("maep max turns per session = %d, want 6", got.MAEPMaxTurnsPerSession)
-	}
-	if got.MAEPSessionCooldown != 72*time.Hour {
-		t.Fatalf("maep session cooldown = %v, want 72h", got.MAEPSessionCooldown)
 	}
 	if got.GroupTriggerMode != "smart" {
 		t.Fatalf("group trigger mode = %q, want smart", got.GroupTriggerMode)

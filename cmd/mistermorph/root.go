@@ -13,7 +13,6 @@ import (
 	"github.com/quailyquaily/mistermorph/cmd/mistermorph/consolecmd"
 	"github.com/quailyquaily/mistermorph/cmd/mistermorph/contactscmd"
 	"github.com/quailyquaily/mistermorph/cmd/mistermorph/daemoncmd"
-	"github.com/quailyquaily/mistermorph/cmd/mistermorph/maepcmd"
 	"github.com/quailyquaily/mistermorph/cmd/mistermorph/runcmd"
 	"github.com/quailyquaily/mistermorph/cmd/mistermorph/skillscmd"
 	"github.com/quailyquaily/mistermorph/cmd/mistermorph/slackcmd"
@@ -172,7 +171,6 @@ func newRootCmd() *cobra.Command {
 	}))
 	cmd.AddCommand(newToolsCmd(registryResolver.Registry))
 	cmd.AddCommand(skillscmd.New())
-	cmd.AddCommand(maepcmd.New())
 	cmd.AddCommand(contactscmd.New())
 	cmd.AddCommand(consolecmd.New())
 	cmd.AddCommand(newInstallCmd())

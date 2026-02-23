@@ -34,11 +34,10 @@ func TestInvariantOutboxIdempotency(t *testing.T) {
 	now := time.Date(2026, 2, 8, 21, 0, 0, 0, time.UTC)
 
 	if _, err := svc.UpsertContact(ctx, Contact{
-		ContactID:       "maep:12D3KooWInv",
-		Kind:            KindAgent,
-		Channel:         ChannelMAEP,
-		MAEPNodeID:      "maep:12D3KooWInv",
-		MAEPDialAddress: "/ip4/127.0.0.1/tcp/4021/p2p/12D3KooWInv",
+		ContactID:       "tg:10086",
+		Kind:            KindHuman,
+		Channel:         ChannelTelegram,
+		TGPrivateChatID: 10086,
 	}, now); err != nil {
 		t.Fatalf("UpsertContact() error = %v", err)
 	}
@@ -46,8 +45,7 @@ func TestInvariantOutboxIdempotency(t *testing.T) {
 	sender := &mockSender{accepted: true}
 	payload := base64.RawURLEncoding.EncodeToString([]byte("hello"))
 	decision := ShareDecision{
-		ContactID:      "maep:12D3KooWInv",
-		PeerID:         "12D3KooWInv",
+		ContactID:      "tg:10086",
 		ItemID:         "manual_item_1",
 		ContentType:    "text/plain",
 		PayloadBase64:  payload,

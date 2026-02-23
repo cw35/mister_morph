@@ -148,7 +148,6 @@ func (rt *Runtime) buildRegistry(cfg registrySnapshot, logger *slog.Logger) *too
 		r.Register(builtin.NewContactsSendTool(builtin.ContactsSendToolOptions{
 			Enabled:          true,
 			ContactsDir:      cfg.ContactsDir,
-			MAEPDir:          cfg.MAEPDir,
 			TelegramBotToken: strings.TrimSpace(cfg.TelegramBotToken),
 			TelegramBaseURL:  strings.TrimSpace(cfg.TelegramBaseURL),
 			SlackBotToken:    strings.TrimSpace(cfg.SlackBotToken),

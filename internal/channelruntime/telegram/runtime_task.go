@@ -236,65 +236,6 @@ func shouldWriteMemory(publishText bool, memManager *memory.Manager, longTermSub
 	return strings.TrimSpace(longTermSubjectID) != ""
 }
 
-func runMAEPTask(ctx context.Context, d Dependencies, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, sharedGuard *guard.Guard, cfg agent.Config, model string, peerID string, history []llm.Message, stickySkills []string, runtimeOpts runtimeTaskOptions, task string) (*agent.Final, *agent.Context, []string, error) {
-	if strings.TrimSpace(task) == "" {
-		return nil, nil, nil, fmt.Errorf("empty maep task")
-	}
-	if baseReg == nil {
-		baseReg = registryFromDeps(d)
-		toolsutil.BindTodoUpdateToolLLM(baseReg, client, model)
-	}
-	reg := buildMAEPRegistry(baseReg)
-	registerPlanTool(d, reg, client, model)
-	toolsutil.BindTodoUpdateToolLLM(reg, client, model)
-
-	promptSpec, loadedSkills, skillAuthProfiles, err := promptSpecForTelegram(d, ctx, logger, logOpts, task, client, model, stickySkills)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	promptprofile.ApplyPersonaIdentity(&promptSpec, logger)
-	promptprofile.AppendLocalToolNotesBlock(&promptSpec, logger)
-	promptprofile.AppendPlanCreateGuidanceBlock(&promptSpec, reg)
-	promptprofile.AppendMAEPReplyPolicyBlock(&promptSpec)
-
-	engine := agent.New(
-		client,
-		reg,
-		cfg,
-		promptSpec,
-		agent.WithLogger(logger),
-		agent.WithLogOptions(logOpts),
-		agent.WithSkillAuthProfiles(skillAuthProfiles, runtimeOpts.SecretsRequireSkillProfiles),
-		agent.WithGuard(sharedGuard),
-	)
-	final, runCtx, err := engine.Run(ctx, task, agent.RunOptions{
-		Model:   model,
-		History: history,
-		Meta: map[string]any{
-			"trigger": "maep_inbound",
-		},
-	})
-	if err != nil {
-		return final, runCtx, loadedSkills, err
-	}
-	return final, runCtx, loadedSkills, nil
-}
-
-func buildMAEPRegistry(baseReg *tools.Registry) *tools.Registry {
-	reg := tools.NewRegistry()
-	if baseReg == nil {
-		return reg
-	}
-	for _, t := range baseReg.All() {
-		name := strings.TrimSpace(t.Name())
-		if name == "contacts_send" {
-			continue
-		}
-		reg.Register(t)
-	}
-	return reg
-}
-
 func buildTelegramRegistry(baseReg *tools.Registry, chatType string) *tools.Registry {
 	reg := tools.NewRegistry()
 	if baseReg == nil {

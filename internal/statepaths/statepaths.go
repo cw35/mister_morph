@@ -33,14 +33,6 @@ func SkillsDir() string {
 	)
 }
 
-func MAEPDir() string {
-	return pathutil.ResolveStateChildDir(
-		viper.GetString("file_state_dir"),
-		viper.GetString("maep.dir_name"),
-		"maep",
-	)
-}
-
 func ContactsDir() string {
 	return pathutil.ResolveStateChildDir(
 		viper.GetString("file_state_dir"),

@@ -19,14 +19,12 @@ import (
 	"github.com/quailyquaily/mistermorph/internal/llmconfig"
 	"github.com/quailyquaily/mistermorph/internal/llmutil"
 	"github.com/quailyquaily/mistermorph/internal/logutil"
-	"github.com/quailyquaily/mistermorph/internal/maepruntime"
 	"github.com/quailyquaily/mistermorph/internal/outputfmt"
 	"github.com/quailyquaily/mistermorph/internal/promptprofile"
 	"github.com/quailyquaily/mistermorph/internal/skillsutil"
 	"github.com/quailyquaily/mistermorph/internal/statepaths"
 	"github.com/quailyquaily/mistermorph/internal/toolsutil"
 	"github.com/quailyquaily/mistermorph/llm"
-	"github.com/quailyquaily/mistermorph/maep"
 	"github.com/quailyquaily/mistermorph/tools"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -59,22 +57,6 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 				return err
 			}
 			slog.SetDefault(logger)
-			withMAEP := configutil.FlagOrViperBool(cmd, "with-maep", "server.with_maep")
-			if withMAEP {
-				maepListenAddrs := configutil.FlagOrViperStringArray(cmd, "maep-listen", "maep.listen_addrs")
-				maepNode, err := maepruntime.Start(cmd.Context(), maepruntime.StartOptions{
-					ListenAddrs: maepListenAddrs,
-					Logger:      logger,
-					OnDataPush: func(event maep.DataPushEvent) {
-						logger.Info("daemon_maep_data_push", "from_peer_id", event.FromPeerID, "topic", event.Topic, "deduped", event.Deduped)
-					},
-				})
-				if err != nil {
-					return fmt.Errorf("start embedded maep: %w", err)
-				}
-				defer maepNode.Close()
-				logger.Info("daemon_maep_ready", "peer_id", maepNode.PeerID(), "addresses", maepNode.AddrStrings())
-			}
 
 			llmValues := llmutil.RuntimeValuesFromViper()
 			provider := strings.TrimSpace(llmValues.Provider)
@@ -440,8 +422,6 @@ func NewServeCmd(deps ServeDependencies) *cobra.Command {
 	cmd.Flags().String("server-listen", "127.0.0.1:8787", "HTTP listen address (host:port).")
 	cmd.Flags().String("server-auth-token", "", "Bearer token required for all non-/health endpoints.")
 	cmd.Flags().Int("server-max-queue", 100, "Max queued tasks in memory.")
-	cmd.Flags().Bool("with-maep", false, "Start MAEP listener together with daemon serve.")
-	cmd.Flags().StringArray("maep-listen", nil, "MAEP listen multiaddr for --with-maep (repeatable). Defaults to maep.listen_addrs or MAEP defaults.")
 
 	return cmd
 }

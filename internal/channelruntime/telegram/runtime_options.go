@@ -11,8 +11,6 @@ type runtimeLoopOptions struct {
 	GroupTriggerMode              string
 	AddressingConfidenceThreshold float64
 	AddressingInterjectThreshold  float64
-	WithMAEP                      bool
-	MAEPListenAddrs               []string
 	PollTimeout                   time.Duration
 	TaskTimeout                   time.Duration
 	MaxConcurrency                int
@@ -36,8 +34,6 @@ type runtimeLoopOptions struct {
 	MemoryInjectionEnabled        bool
 	MemoryInjectionMaxItems       int
 	SecretsRequireSkillProfiles   bool
-	MAEPMaxTurnsPerSession        int
-	MAEPSessionCooldown           time.Duration
 	InspectPrompt                 bool
 	InspectRequest                bool
 }
@@ -49,8 +45,6 @@ func resolveRuntimeLoopOptionsFromRunOptions(opts RunOptions) runtimeLoopOptions
 		GroupTriggerMode:              strings.TrimSpace(opts.GroupTriggerMode),
 		AddressingConfidenceThreshold: opts.AddressingConfidenceThreshold,
 		AddressingInterjectThreshold:  opts.AddressingInterjectThreshold,
-		WithMAEP:                      opts.WithMAEP,
-		MAEPListenAddrs:               normalizeRunStringSlice(opts.MAEPListenAddrs),
 		PollTimeout:                   opts.PollTimeout,
 		TaskTimeout:                   opts.TaskTimeout,
 		MaxConcurrency:                opts.MaxConcurrency,
@@ -74,8 +68,6 @@ func resolveRuntimeLoopOptionsFromRunOptions(opts RunOptions) runtimeLoopOptions
 		MemoryInjectionEnabled:        opts.MemoryInjectionEnabled,
 		MemoryInjectionMaxItems:       opts.MemoryInjectionMaxItems,
 		SecretsRequireSkillProfiles:   opts.SecretsRequireSkillProfiles,
-		MAEPMaxTurnsPerSession:        opts.MAEPMaxTurnsPerSession,
-		MAEPSessionCooldown:           opts.MAEPSessionCooldown,
 		InspectPrompt:                 opts.InspectPrompt,
 		InspectRequest:                opts.InspectRequest,
 	}
@@ -85,7 +77,6 @@ func resolveRuntimeLoopOptionsFromRunOptions(opts RunOptions) runtimeLoopOptions
 func normalizeRuntimeLoopOptions(opts runtimeLoopOptions) runtimeLoopOptions {
 	opts.BotToken = strings.TrimSpace(opts.BotToken)
 	opts.AllowedChatIDs = normalizeAllowedChatIDs(opts.AllowedChatIDs)
-	opts.MAEPListenAddrs = normalizeRunStringSlice(opts.MAEPListenAddrs)
 	opts.GroupTriggerMode = strings.ToLower(strings.TrimSpace(opts.GroupTriggerMode))
 	opts.FileCacheDir = strings.TrimSpace(opts.FileCacheDir)
 	opts.ServerListen = strings.TrimSpace(opts.ServerListen)
@@ -138,12 +129,6 @@ func normalizeRuntimeLoopOptions(opts runtimeLoopOptions) runtimeLoopOptions {
 	}
 	if opts.GroupTriggerMode == "" {
 		opts.GroupTriggerMode = "smart"
-	}
-	if opts.MAEPMaxTurnsPerSession <= 0 {
-		opts.MAEPMaxTurnsPerSession = defaultMAEPMaxTurnsPerSession
-	}
-	if opts.MAEPSessionCooldown <= 0 {
-		opts.MAEPSessionCooldown = defaultMAEPSessionCooldown
 	}
 	if opts.ServerListen == "" {
 		opts.ServerListen = "127.0.0.1:8787"

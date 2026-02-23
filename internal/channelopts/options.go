@@ -26,7 +26,6 @@ type TelegramConfig struct {
 	DefaultGroupTriggerMode              string
 	DefaultAddressingConfidenceThreshold float64
 	DefaultAddressingInterjectThreshold  float64
-	MAEPListenAddrs                      []string
 	PollTimeout                          time.Duration
 	TaskTimeout                          time.Duration
 	GlobalTaskTimeout                    time.Duration
@@ -50,8 +49,6 @@ type TelegramConfig struct {
 	MemoryInjectionEnabled               bool
 	MemoryInjectionMaxItems              int
 	SecretsRequireSkillProfiles          bool
-	ContactsProactiveMaxTurnsPerSession  int
-	ContactsProactiveSessionCooldown     time.Duration
 }
 
 type TelegramInput struct {
@@ -60,8 +57,6 @@ type TelegramInput struct {
 	GroupTriggerMode              string
 	AddressingConfidenceThreshold float64
 	AddressingInterjectThreshold  float64
-	WithMAEP                      bool
-	MAEPListenAddrs               []string
 	PollTimeout                   time.Duration
 	TaskTimeout                   time.Duration
 	MaxConcurrency                int
@@ -80,7 +75,6 @@ func TelegramConfigFromReader(r ConfigReader) TelegramConfig {
 		DefaultGroupTriggerMode:              strings.TrimSpace(r.GetString("telegram.group_trigger_mode")),
 		DefaultAddressingConfidenceThreshold: r.GetFloat64("telegram.addressing_confidence_threshold"),
 		DefaultAddressingInterjectThreshold:  r.GetFloat64("telegram.addressing_interject_threshold"),
-		MAEPListenAddrs:                      append([]string(nil), r.GetStringSlice("maep.listen_addrs")...),
 		PollTimeout:                          r.GetDuration("telegram.poll_timeout"),
 		TaskTimeout:                          r.GetDuration("telegram.task_timeout"),
 		GlobalTaskTimeout:                    r.GetDuration("timeout"),
@@ -104,8 +98,6 @@ func TelegramConfigFromReader(r ConfigReader) TelegramConfig {
 		MemoryInjectionEnabled:               r.GetBool("memory.injection.enabled"),
 		MemoryInjectionMaxItems:              r.GetInt("memory.injection.max_items"),
 		SecretsRequireSkillProfiles:          r.GetBool("secrets.require_skill_profiles"),
-		ContactsProactiveMaxTurnsPerSession:  r.GetInt("contacts.proactive.max_turns_per_session"),
-		ContactsProactiveSessionCooldown:     r.GetDuration("contacts.proactive.session_cooldown"),
 	}
 }
 
@@ -135,10 +127,6 @@ func BuildTelegramRunOptions(cfg TelegramConfig, in TelegramInput) (telegramrunt
 	if addressingInterjectThreshold <= 0 {
 		addressingInterjectThreshold = cfg.DefaultAddressingInterjectThreshold
 	}
-	maepListenAddrs := append([]string(nil), in.MAEPListenAddrs...)
-	if len(maepListenAddrs) == 0 {
-		maepListenAddrs = append([]string(nil), cfg.MAEPListenAddrs...)
-	}
 	pollTimeout := in.PollTimeout
 	if pollTimeout <= 0 {
 		pollTimeout = cfg.PollTimeout
@@ -166,8 +154,6 @@ func BuildTelegramRunOptions(cfg TelegramConfig, in TelegramInput) (telegramrunt
 		GroupTriggerMode:              groupTriggerMode,
 		AddressingConfidenceThreshold: addressingConfidenceThreshold,
 		AddressingInterjectThreshold:  addressingInterjectThreshold,
-		WithMAEP:                      in.WithMAEP,
-		MAEPListenAddrs:               maepListenAddrs,
 		PollTimeout:                   pollTimeout,
 		TaskTimeout:                   taskTimeout,
 		MaxConcurrency:                maxConcurrency,
@@ -190,8 +176,6 @@ func BuildTelegramRunOptions(cfg TelegramConfig, in TelegramInput) (telegramrunt
 		MemoryInjectionEnabled:        cfg.MemoryInjectionEnabled,
 		MemoryInjectionMaxItems:       cfg.MemoryInjectionMaxItems,
 		SecretsRequireSkillProfiles:   cfg.SecretsRequireSkillProfiles,
-		MAEPMaxTurnsPerSession:        cfg.ContactsProactiveMaxTurnsPerSession,
-		MAEPSessionCooldown:           cfg.ContactsProactiveSessionCooldown,
 		Hooks:                         in.Hooks,
 		InspectPrompt:                 in.InspectPrompt,
 		InspectRequest:                in.InspectRequest,

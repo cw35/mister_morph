@@ -48,7 +48,6 @@ type registryConfig struct {
 	TODOPathWIP                   string
 	TODOPathDone                  string
 	ContactsDir                   string
-	MAEPDir                       string
 	TelegramBotToken              string
 	TelegramBaseURL               string
 	SlackBotToken                 string
@@ -125,7 +124,6 @@ func loadRegistryConfigFromViper() registryConfig {
 		TODOPathWIP:                   pathutil.ResolveStateFile(fileStateDir, statepaths.TODOWIPFilename),
 		TODOPathDone:                  pathutil.ResolveStateFile(fileStateDir, statepaths.TODODONEFilename),
 		ContactsDir:                   pathutil.ResolveStateChildDir(fileStateDir, strings.TrimSpace(viper.GetString("contacts.dir_name")), "contacts"),
-		MAEPDir:                       pathutil.ResolveStateChildDir(fileStateDir, strings.TrimSpace(viper.GetString("maep.dir_name")), "maep"),
 		TelegramBotToken:              strings.TrimSpace(viper.GetString("telegram.bot_token")),
 		TelegramBaseURL:               "https://api.telegram.org",
 		SlackBotToken:                 strings.TrimSpace(viper.GetString("slack.bot_token")),
@@ -253,7 +251,6 @@ func buildRegistryFromConfig(cfg registryConfig, log *slog.Logger) *tools.Regist
 		r.Register(builtin.NewContactsSendTool(builtin.ContactsSendToolOptions{
 			Enabled:          true,
 			ContactsDir:      cfg.ContactsDir,
-			MAEPDir:          cfg.MAEPDir,
 			TelegramBotToken: strings.TrimSpace(cfg.TelegramBotToken),
 			TelegramBaseURL:  strings.TrimSpace(cfg.TelegramBaseURL),
 			SlackBotToken:    strings.TrimSpace(cfg.SlackBotToken),

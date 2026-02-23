@@ -16,7 +16,6 @@ import (
 	"github.com/quailyquaily/mistermorph/contacts"
 	"github.com/quailyquaily/mistermorph/guard"
 	busruntime "github.com/quailyquaily/mistermorph/internal/bus"
-	maepbus "github.com/quailyquaily/mistermorph/internal/bus/adapters/maep"
 	telegrambus "github.com/quailyquaily/mistermorph/internal/bus/adapters/telegram"
 	runtimeworker "github.com/quailyquaily/mistermorph/internal/channelruntime/worker"
 	"github.com/quailyquaily/mistermorph/internal/chathistory"
@@ -24,12 +23,9 @@ import (
 	"github.com/quailyquaily/mistermorph/internal/heartbeatutil"
 	"github.com/quailyquaily/mistermorph/internal/llmconfig"
 	"github.com/quailyquaily/mistermorph/internal/llminspect"
-	"github.com/quailyquaily/mistermorph/internal/maepruntime"
 	"github.com/quailyquaily/mistermorph/internal/statepaths"
 	"github.com/quailyquaily/mistermorph/internal/telegramutil"
 	"github.com/quailyquaily/mistermorph/internal/toolsutil"
-	"github.com/quailyquaily/mistermorph/llm"
-	"github.com/quailyquaily/mistermorph/maep"
 	"github.com/quailyquaily/mistermorph/memory"
 	telegramtools "github.com/quailyquaily/mistermorph/tools/telegram"
 )
@@ -56,34 +52,6 @@ type telegramJob struct {
 type telegramChatWorker struct {
 	Jobs    chan telegramJob
 	Version uint64
-}
-
-type maepSessionState struct {
-	TurnCount         int
-	CooldownUntil     time.Time
-	UpdatedAt         time.Time
-	InterestLevel     float64
-	LowInterestRounds int
-	PreferenceSynced  bool
-}
-
-const (
-	defaultMAEPMaxTurnsPerSession = 6
-	defaultMAEPSessionCooldown    = 72 * time.Hour
-	defaultMAEPInterestLevel      = 0.60
-	maepInterestStopThreshold     = 0.30
-	maepInterestLowRoundsLimit    = 2
-	maepWrapUpConfidenceThreshold = 0.70
-	maepFeedbackNegativeThreshold = 0.55
-	maepFeedbackPositiveThreshold = 0.60
-)
-
-type maepFeedbackClassification struct {
-	SignalPositive float64 `json:"signal_positive"`
-	SignalNegative float64 `json:"signal_negative"`
-	SignalBored    float64 `json:"signal_bored"`
-	NextAction     string  `json:"next_action"`
-	Confidence     float64 `json:"confidence"`
 }
 
 func shouldRunInitFlow(initRequired bool, normalizedCmd string) bool {
@@ -135,13 +103,8 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 	contactsStore := contacts.NewFileStore(statepaths.ContactsDir())
 	contactsSvc := contacts.NewService(contactsStore)
 
-	withMAEP := opts.WithMAEP
-	var maepNode *maep.Node
-	var maepInboundAdapter *maepbus.InboundAdapter
 	var telegramInboundAdapter *telegrambus.InboundAdapter
-	var maepDeliveryAdapter *maepbus.DeliveryAdapter
 	var telegramDeliveryAdapter *telegrambus.DeliveryAdapter
-	maepEventCh := make(chan maep.DataPushEvent, 64)
 	var enqueueTelegramInbound func(context.Context, busruntime.BusMessage) error
 	telegramInboundAdapter, err = telegrambus.NewInboundAdapter(telegrambus.InboundAdapterOptions{
 		Bus:   inprocBus,
@@ -150,13 +113,12 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 	if err != nil {
 		return err
 	}
-	maepSvc := maep.NewService(maep.NewFileStore(statepaths.MAEPDir()))
 
 	busHandler := func(ctx context.Context, msg busruntime.BusMessage) error {
 		switch msg.Direction {
 		case busruntime.DirectionInbound:
-			if msg.Channel == busruntime.ChannelTelegram || msg.Channel == busruntime.ChannelMAEP {
-				if err := contactsSvc.ObserveInboundBusMessage(context.Background(), msg, maepSvc, time.Now().UTC()); err != nil {
+			if msg.Channel == busruntime.ChannelTelegram {
+				if err := contactsSvc.ObserveInboundBusMessage(context.Background(), msg, time.Now().UTC()); err != nil {
 					logger.Warn("contacts_observe_bus_error", "channel", msg.Channel, "idempotency_key", msg.IdempotencyKey, "error", err.Error())
 				}
 			}
@@ -166,18 +128,6 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 					return fmt.Errorf("telegram inbound handler is not initialized")
 				}
 				return enqueueTelegramInbound(ctx, msg)
-			case busruntime.ChannelMAEP:
-				event, err := maepbus.EventFromBusMessage(msg)
-				if err != nil {
-					return err
-				}
-				select {
-				case maepEventCh <- event:
-					logger.Debug("telegram_bus_inbound_forwarded", "channel", msg.Channel, "topic", msg.Topic, "idempotency_key", msg.IdempotencyKey)
-					return nil
-				default:
-					return fmt.Errorf("maep inbound queue is full")
-				}
 			default:
 				return fmt.Errorf("unsupported inbound channel: %s", msg.Channel)
 			}
@@ -208,12 +158,6 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 					callOutboundHook(ctx, logger, hooks, event)
 				}
 				return nil
-			case busruntime.ChannelMAEP:
-				if maepDeliveryAdapter == nil {
-					return fmt.Errorf("maep delivery adapter is not initialized")
-				}
-				_, _, err := maepDeliveryAdapter.Deliver(ctx, msg)
-				return err
 			default:
 				return fmt.Errorf("unsupported outbound channel: %s", msg.Channel)
 			}
@@ -225,42 +169,6 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 		if err := inprocBus.Subscribe(topic, busHandler); err != nil {
 			return err
 		}
-	}
-
-	if withMAEP {
-		maepInboundAdapter, err = maepbus.NewInboundAdapter(maepbus.InboundAdapterOptions{
-			Bus:   inprocBus,
-			Store: contactsStore,
-		})
-		if err != nil {
-			return err
-		}
-		maepListenAddrs := append([]string(nil), opts.MAEPListenAddrs...)
-		maepNode, err = maepruntime.Start(pollCtx, maepruntime.StartOptions{
-			ListenAddrs: maepListenAddrs,
-			Logger:      logger,
-			OnDataPush: func(event maep.DataPushEvent) {
-				accepted, publishErr := maepInboundAdapter.HandleDataPush(context.Background(), event)
-				if publishErr != nil {
-					logger.Warn("telegram_maep_bus_publish_error", "from_peer_id", event.FromPeerID, "topic", event.Topic, "bus_error_code", busErrorCodeString(publishErr), "error", publishErr.Error())
-					return
-				}
-				if !accepted {
-					logger.Debug("telegram_maep_bus_deduped", "from_peer_id", event.FromPeerID, "topic", event.Topic, "idempotency_key", event.IdempotencyKey)
-				}
-			},
-		})
-		if err != nil {
-			return fmt.Errorf("start embedded maep: %w", err)
-		}
-		maepDeliveryAdapter, err = maepbus.NewDeliveryAdapter(maepbus.DeliveryAdapterOptions{
-			Node: maepNode,
-		})
-		if err != nil {
-			return err
-		}
-		defer maepNode.Close()
-		logger.Info("telegram_maep_ready", "peer_id", maepNode.PeerID(), "addresses", maepNode.AddrStrings())
 	}
 
 	requestTimeout := opts.RequestTimeout
@@ -358,19 +266,6 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 		}
 	}
 
-	maepMaxTurnsPerSession := opts.MAEPMaxTurnsPerSession
-	maepSessionCooldown := opts.MAEPSessionCooldown
-	runtimeStore, err := maepruntime.NewStateStore(statepaths.MAEPDir())
-	if err != nil {
-		return fmt.Errorf("init telegram runtime state store: %w", err)
-	}
-	runtimeSnapshot, runtimeStateFound, err := runtimeStore.Load()
-	if err != nil {
-		logger.Warn("telegram_runtime_state_load_error", "error", err.Error())
-		runtimeSnapshot = maepruntime.StateSnapshot{}
-		runtimeStateFound = false
-	}
-
 	httpClient := &http.Client{Timeout: 60 * time.Second}
 	api := newTelegramAPI(httpClient, baseURL, token)
 	telegramDeliveryAdapter, err = telegrambus.NewDeliveryAdapter(telegrambus.DeliveryAdapterOptions{
@@ -456,12 +351,6 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 		mu                 sync.Mutex
 		history            = make(map[int64][]chathistory.ChatHistoryItem)
 		initSessions       = make(map[int64]telegramInitSession)
-		maepMu             sync.Mutex
-		maepHistory        = make(map[string][]llm.Message)
-		maepStickySkills   = make(map[string][]string)
-		maepSessions       = make(map[string]maepSessionState)
-		maepSessionDirty   bool
-		maepVersion        uint64
 		stickySkillsByChat = make(map[int64][]string)
 		workers            = make(map[int64]*telegramChatWorker)
 		lastActivity       = make(map[int64]time.Time)
@@ -475,16 +364,6 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 		heartbeatState     = &heartbeatutil.State{}
 		offset             int64
 	)
-	if runtimeStateFound {
-		restoredOffset, ok := runtimeSnapshot.ChannelOffsets[maepruntime.ChannelTelegram]
-		if !ok {
-			logger.Warn("telegram_runtime_state_missing_offset", "channel", maepruntime.ChannelTelegram)
-		} else {
-			offset = restoredOffset
-			maepSessions = restoreMAEPSessionStates(runtimeSnapshot.SessionStates)
-			logger.Info("telegram_runtime_state_loaded", "offset", offset, "session_states", len(maepSessions))
-		}
-	}
 	initRequired := false
 	if _, err := loadInitProfileDraft(); err == nil {
 		initRequired = true
@@ -975,153 +854,6 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 		}()
 	}
 
-	if withMAEP && maepNode != nil {
-		go func() {
-			for {
-				select {
-				case <-pollCtx.Done():
-					return
-				case event := <-maepEventCh:
-					if event.Deduped {
-						continue
-					}
-					peerID := strings.TrimSpace(event.FromPeerID)
-					if peerID == "" {
-						continue
-					}
-					if !shouldAutoReplyMAEPTopic(event.Topic) {
-						logger.Debug("telegram_maep_ignore_topic", "from_peer_id", peerID, "topic", event.Topic)
-						continue
-					}
-					task, sessionID := extractMAEPTask(event)
-					if strings.TrimSpace(task) == "" {
-						logger.Debug("telegram_maep_ignore_empty_task", "from_peer_id", peerID, "topic", event.Topic)
-						continue
-					}
-					sessionKey := maepSessionKey(peerID, event.Topic, sessionID)
-
-					maepMu.Lock()
-					historySnapshot := append([]llm.Message(nil), maepHistory[peerID]...)
-					maepMu.Unlock()
-
-					feedback := maepFeedbackClassification{
-						NextAction: "continue",
-						Confidence: 1,
-					}
-					feedbackCtx, feedbackCancel := context.WithTimeout(context.Background(), maepFeedbackTimeout(requestTimeout))
-					classified, classifyErr := classifyMAEPFeedback(feedbackCtx, client, model, historySnapshot, task)
-					feedbackCancel()
-					if classifyErr != nil {
-						logger.Warn("telegram_maep_feedback_classify_error", "from_peer_id", peerID, "topic", event.Topic, "error", classifyErr.Error())
-					} else {
-						feedback = classified
-					}
-
-					now := time.Now().UTC()
-					if err := applyMAEPInboundFeedback(context.Background(), contactsSvc, maepSvc, peerID, event.Topic, sessionID, feedback, now); err != nil {
-						logger.Warn("contacts_feedback_maep_error", "peer_id", peerID, "topic", event.Topic, "error", err.Error())
-					}
-					maepMu.Lock()
-					sessionState := maepSessions[sessionKey]
-					sessionState = applyMAEPFeedback(sessionState, feedback)
-					nextSessionState, blockedByFeedback, blockedReason := maybeLimitMAEPSessionByFeedback(now, sessionState, feedback, maepSessionCooldown)
-					if !blockedByFeedback {
-						var allowedTurn bool
-						nextSessionState, allowedTurn = allowMAEPSessionTurn(now, nextSessionState, maepMaxTurnsPerSession, maepSessionCooldown)
-						if !allowedTurn {
-							blockedByFeedback = true
-							blockedReason = "turn_limit_or_cooldown"
-						}
-					}
-					shouldRefreshPreferences := false
-					if blockedByFeedback && !nextSessionState.PreferenceSynced {
-						nextSessionState.PreferenceSynced = true
-						shouldRefreshPreferences = true
-					}
-					maepSessions[sessionKey] = nextSessionState
-					maepSessionDirty = true
-					if blockedByFeedback {
-						maepMu.Unlock()
-						preferenceChanged := false
-						if shouldRefreshPreferences {
-							prefCtx, prefCancel := context.WithTimeout(context.Background(), maepFeedbackTimeout(requestTimeout))
-							changed, prefErr := refreshMAEPPreferencesOnSessionEnd(prefCtx, contactsSvc, maepSvc, client, model, peerID, event.Topic, sessionID, task, historySnapshot, now, blockedReason)
-							prefCancel()
-							if prefErr != nil {
-								logger.Warn("telegram_maep_preference_refresh_error", "from_peer_id", peerID, "topic", event.Topic, "session_key", sessionKey, "reason", blockedReason, "error", prefErr.Error())
-							} else {
-								preferenceChanged = changed
-							}
-						}
-						logger.Info(
-							"telegram_maep_session_limited",
-							"from_peer_id", peerID,
-							"session_key", sessionKey,
-							"reason", blockedReason,
-							"turn_count", nextSessionState.TurnCount,
-							"interest_level", fmt.Sprintf("%.3f", nextSessionState.InterestLevel),
-							"low_interest_rounds", nextSessionState.LowInterestRounds,
-							"cooldown_until", nextSessionState.CooldownUntil.UTC().Format(time.RFC3339),
-							"preference_refresh_attempted", shouldRefreshPreferences,
-							"preference_changed", preferenceChanged,
-						)
-						continue
-					}
-					h := append([]llm.Message(nil), maepHistory[peerID]...)
-					sticky := append([]string(nil), maepStickySkills[peerID]...)
-					maepVersion++
-					currentVersion := maepVersion
-					maepMu.Unlock()
-
-					logger.Info("telegram_maep_task_enqueued", "from_peer_id", peerID, "topic", event.Topic, "task_len", len(task))
-					runCtx, cancel := context.WithTimeout(context.Background(), taskTimeout)
-					final, _, loadedSkills, runErr := runMAEPTask(runCtx, d, logger, logOpts, client, reg, sharedGuard, cfg, model, peerID, h, sticky, taskRuntimeOpts, task)
-					cancel()
-					if runErr != nil {
-						logger.Warn("telegram_maep_task_error", "from_peer_id", peerID, "topic", event.Topic, "error", runErr.Error())
-						continue
-					}
-
-					output := strings.TrimSpace(formatFinalOutput(final))
-					if output == "" {
-						continue
-					}
-					pushCtx, pushCancel := context.WithTimeout(context.Background(), maepPushTimeout(requestTimeout))
-					replyTopic := resolveMAEPReplyTopic(event.Topic)
-					replyMessageID, pushErr := publishMAEPBusOutbound(pushCtx, inprocBus, peerID, replyTopic, output, sessionID, event.ReplyTo, fmt.Sprintf("maep:reply:%s", peerID))
-					pushCancel()
-					if pushErr != nil {
-						logger.Warn("telegram_maep_reply_queue_error", "to_peer_id", peerID, "topic", replyTopic, "bus_error_code", busErrorCodeString(pushErr), "error", pushErr.Error())
-						continue
-					}
-					logger.Info("telegram_maep_reply_queued", "to_peer_id", peerID, "topic", replyTopic, "message_id", replyMessageID)
-
-					maepMu.Lock()
-					if currentVersion == maepVersion {
-						sessionState = maepSessions[sessionKey]
-						sessionState.TurnCount++
-						sessionState.UpdatedAt = time.Now().UTC()
-						maepSessions[sessionKey] = sessionState
-						maepSessionDirty = true
-						if len(loadedSkills) > 0 {
-							maepStickySkills[peerID] = capUniqueStrings(loadedSkills, telegramStickySkillsCap)
-						}
-						cur := maepHistory[peerID]
-						cur = append(cur,
-							llm.Message{Role: "user", Content: task},
-							llm.Message{Role: "assistant", Content: output},
-						)
-						if len(cur) > telegramHistoryCap {
-							cur = cur[len(cur)-telegramHistoryCap:]
-						}
-						maepHistory[peerID] = cur
-					}
-					maepMu.Unlock()
-				}
-			}
-		}()
-	}
-
 	for {
 		updates, nextOffset, err := api.getUpdates(pollCtx, offset, pollTimeout)
 		if err != nil {
@@ -1137,7 +869,6 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 			time.Sleep(1 * time.Second)
 			continue
 		}
-		offsetChanged := nextOffset != offset
 		offset = nextOffset
 
 		for _, u := range updates {
@@ -1601,29 +1332,6 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 			}
 		}
 
-		persistNeeded := offsetChanged
-		var maepSessionsSnapshot map[string]maepSessionState
-		maepMu.Lock()
-		if maepSessionDirty {
-			persistNeeded = true
-			maepSessionDirty = false
-		}
-		if persistNeeded {
-			maepSessionsSnapshot = cloneMAEPSessionStates(maepSessions)
-		}
-		maepMu.Unlock()
-
-		if persistNeeded {
-			snapshot := maepruntime.StateSnapshot{
-				ChannelOffsets: map[string]int64{
-					maepruntime.ChannelTelegram: offset,
-				},
-				SessionStates: exportMAEPSessionStates(maepSessionsSnapshot),
-			}
-			if err := runtimeStore.Save(snapshot); err != nil {
-				logger.Warn("telegram_runtime_state_persist_error", "error", err.Error())
-			}
-		}
 	}
 }
 

@@ -491,7 +491,7 @@ func runSlackLoop(ctx context.Context, d Dependencies, opts runtimeLoopOptions) 
 			if msg.Channel != busruntime.ChannelSlack {
 				return fmt.Errorf("unsupported inbound channel: %s", msg.Channel)
 			}
-			if err := contactsSvc.ObserveInboundBusMessage(context.Background(), msg, nil, time.Now().UTC()); err != nil {
+			if err := contactsSvc.ObserveInboundBusMessage(context.Background(), msg, time.Now().UTC()); err != nil {
 				logger.Warn("contacts_observe_bus_error", "channel", msg.Channel, "idempotency_key", msg.IdempotencyKey, "error", err.Error())
 			}
 			if enqueueSlackInbound == nil {

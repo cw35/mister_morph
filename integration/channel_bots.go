@@ -113,7 +113,6 @@ func (r *telegramBotRunner) Run(ctx context.Context) error {
 			GroupTriggerMode:              strings.TrimSpace(r.opts.GroupTriggerMode),
 			AddressingConfidenceThreshold: r.opts.AddressingConfidenceThreshold,
 			AddressingInterjectThreshold:  r.opts.AddressingInterjectThreshold,
-			WithMAEP:                      false,
 			PollTimeout:                   r.opts.PollTimeout,
 			TaskTimeout:                   r.opts.TaskTimeout,
 			MaxConcurrency:                r.opts.MaxConcurrency,

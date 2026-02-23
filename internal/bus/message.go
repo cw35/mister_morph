@@ -20,7 +20,6 @@ const (
 	ChannelTelegram Channel = Channel(channels.Telegram)
 	ChannelSlack    Channel = Channel(channels.Slack)
 	ChannelDiscord  Channel = Channel(channels.Discord)
-	ChannelMAEP     Channel = Channel(channels.MAEP)
 )
 
 type MessageExtensions struct {
@@ -72,7 +71,7 @@ func (m BusMessage) Validate() error {
 
 	if m.Channel != "" {
 		switch m.Channel {
-		case ChannelTelegram, ChannelSlack, ChannelDiscord, ChannelMAEP:
+		case ChannelTelegram, ChannelSlack, ChannelDiscord:
 		default:
 			return fmt.Errorf("channel is invalid")
 		}
