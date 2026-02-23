@@ -16,21 +16,14 @@ import (
 	"github.com/quailyquaily/mistermorph/memory"
 )
 
-func updateTelegramMemory(ctx context.Context, logger *slog.Logger, client llm.Client, model string, mgr *memory.Manager, id memory.Identity, job telegramJob, history []chathistory.ChatHistoryItem, historyCap int, final *agent.Final, requestTimeout time.Duration) error {
+func updateMemoryFromJob(ctx context.Context, logger *slog.Logger, client llm.Client, model string, mgr *memory.Manager, longTermSubjectID string, job telegramJob, history []chathistory.ChatHistoryItem, historyCap int, final *agent.Final, requestTimeout time.Duration) error {
 	if mgr == nil || client == nil {
 		return nil
 	}
 	output := formatFinalOutput(final)
 	date := time.Now().UTC()
-	contactNickname := strings.TrimSpace(job.FromDisplayName)
-	if contactNickname == "" {
-		contactNickname = strings.TrimSpace(strings.Join([]string{job.FromFirstName, job.FromLastName}, " "))
-	}
-	meta := memory.WriteMeta{
-		SessionID:        fmt.Sprintf("tg:%d", job.ChatID),
-		ContactIDs:       []string{telegramMemoryContactID(job.FromUsername, job.FromUserID)},
-		ContactNicknames: []string{contactNickname},
-	}
+	longTermSubjectID = strings.TrimSpace(longTermSubjectID)
+	meta := buildMemoryWriteMeta(job)
 
 	ctxInfo := MemoryDraftContext{
 		SessionID:          meta.SessionID,
@@ -57,7 +50,7 @@ func updateTelegramMemory(ctx context.Context, logger *slog.Logger, client llm.C
 	defer cancel()
 	ctxInfo.CounterpartyLabel = buildMemoryCounterpartyLabel(meta, ctxInfo)
 
-	draftHistory := buildTelegramMemoryDraftHistory(history, job, output, date, historyCap)
+	draftHistory := buildMemoryDraftHistory(history, job, output, date, historyCap)
 	draft, err := BuildMemoryDraft(memCtx, client, model, draftHistory, job.Text, output, existingContent, ctxInfo)
 	if err != nil {
 		return err
@@ -80,16 +73,42 @@ func updateTelegramMemory(ctx context.Context, logger *slog.Logger, client llm.C
 	if err != nil {
 		return err
 	}
-	if _, err := mgr.UpdateLongTerm(id.SubjectID, draft.Promote); err != nil {
-		return err
+	if longTermSubjectID != "" {
+		if _, err := mgr.UpdateLongTerm(longTermSubjectID, draft.Promote); err != nil {
+			return err
+		}
 	}
 	if logger != nil {
-		logger.Debug("memory_update_ok", "subject_id", id.SubjectID)
+		attrs := []any{"session_id", meta.SessionID}
+		if longTermSubjectID != "" {
+			attrs = append(attrs, "subject_id", longTermSubjectID)
+		}
+		logger.Debug("memory_update_ok", attrs...)
 	}
 	return nil
 }
 
-func buildTelegramMemoryDraftHistory(history []chathistory.ChatHistoryItem, job telegramJob, output string, now time.Time, maxItems int) []chathistory.ChatHistoryItem {
+const heartbeatMemorySessionID = "heartbeat"
+
+func buildMemoryWriteMeta(job telegramJob) memory.WriteMeta {
+	if job.IsHeartbeat {
+		return memory.WriteMeta{SessionID: heartbeatMemorySessionID}
+	}
+	meta := memory.WriteMeta{SessionID: fmt.Sprintf("tg:%d", job.ChatID)}
+	if contactID := telegramMemoryContactID(job.FromUsername, job.FromUserID); contactID != "" {
+		meta.ContactIDs = []string{contactID}
+	}
+	contactNickname := strings.TrimSpace(job.FromDisplayName)
+	if contactNickname == "" {
+		contactNickname = strings.TrimSpace(strings.Join([]string{job.FromFirstName, job.FromLastName}, " "))
+	}
+	if contactNickname != "" {
+		meta.ContactNicknames = []string{contactNickname}
+	}
+	return meta
+}
+
+func buildMemoryDraftHistory(history []chathistory.ChatHistoryItem, job telegramJob, output string, now time.Time, maxItems int) []chathistory.ChatHistoryItem {
 	out := append([]chathistory.ChatHistoryItem{}, history...)
 	out = append(out, newTelegramInboundHistoryItem(job))
 	if strings.TrimSpace(output) != "" {

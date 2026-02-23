@@ -91,37 +91,41 @@ func runTelegramTask(ctx context.Context, d Dependencies, logger *slog.Logger, l
 
 	var memManager *memory.Manager
 	var memIdentity memory.Identity
-	memReqCtx := memory.ContextPublic
-	if runtimeOpts.MemoryEnabled && job.FromUserID > 0 {
-		if strings.ToLower(strings.TrimSpace(job.ChatType)) == "private" {
-			memReqCtx = memory.ContextPrivate
-		}
-		id, err := (&memory.Resolver{}).ResolveTelegram(ctx, job.FromUserID)
-		if err != nil {
-			return nil, nil, loadedSkills, nil, fmt.Errorf("memory identity: %w", err)
-		}
-		if id.Enabled && strings.TrimSpace(id.SubjectID) != "" {
-			memIdentity = id
-			memManager = memory.NewManager(statepaths.MemoryDir(), runtimeOpts.MemoryShortTermDays)
-			if runtimeOpts.MemoryInjectionEnabled {
-				maxItems := runtimeOpts.MemoryInjectionMaxItems
-				snap, err := memManager.BuildInjection(id.SubjectID, memReqCtx, maxItems)
-				if err != nil {
-					return nil, nil, loadedSkills, nil, fmt.Errorf("memory injection: %w", err)
-				}
-				if strings.TrimSpace(snap) != "" {
-					promptprofile.AppendMemorySummariesBlock(&promptSpec, snap)
-					if logger != nil {
-						logger.Info("memory_injection_applied", "source", "telegram", "subject_id", id.SubjectID, "chat_id", job.ChatID, "snapshot_len", len(snap))
+	if runtimeOpts.MemoryEnabled {
+		memManager = memory.NewManager(statepaths.MemoryDir(), runtimeOpts.MemoryShortTermDays)
+		if job.FromUserID > 0 {
+			memReqCtx := memory.ContextPublic
+			if strings.ToLower(strings.TrimSpace(job.ChatType)) == "private" {
+				memReqCtx = memory.ContextPrivate
+			}
+			id, err := (&memory.Resolver{}).ResolveTelegram(ctx, job.FromUserID)
+			if err != nil {
+				return nil, nil, loadedSkills, nil, fmt.Errorf("memory identity: %w", err)
+			}
+			if id.Enabled && strings.TrimSpace(id.SubjectID) != "" {
+				memIdentity = id
+				if runtimeOpts.MemoryInjectionEnabled {
+					maxItems := runtimeOpts.MemoryInjectionMaxItems
+					snap, err := memManager.BuildInjection(id.SubjectID, memReqCtx, maxItems)
+					if err != nil {
+						return nil, nil, loadedSkills, nil, fmt.Errorf("memory injection: %w", err)
+					}
+					if strings.TrimSpace(snap) != "" {
+						promptprofile.AppendMemorySummariesBlock(&promptSpec, snap)
+						if logger != nil {
+							logger.Info("memory_injection_applied", "source", "telegram", "subject_id", id.SubjectID, "chat_id", job.ChatID, "snapshot_len", len(snap))
+						}
+					} else if logger != nil {
+						logger.Debug("memory_injection_skipped", "source", "telegram", "reason", "empty_snapshot", "subject_id", id.SubjectID, "chat_id", job.ChatID)
 					}
 				} else if logger != nil {
-					logger.Debug("memory_injection_skipped", "source", "telegram", "reason", "empty_snapshot", "subject_id", id.SubjectID, "chat_id", job.ChatID)
+					logger.Debug("memory_injection_skipped", "source", "telegram", "reason", "disabled")
 				}
 			} else if logger != nil {
-				logger.Debug("memory_injection_skipped", "source", "telegram", "reason", "disabled")
+				logger.Debug("memory_identity_unavailable", "source", "telegram", "enabled", id.Enabled, "subject_id", strings.TrimSpace(id.SubjectID))
 			}
-		} else if logger != nil {
-			logger.Debug("memory_identity_unavailable", "source", "telegram", "enabled", id.Enabled, "subject_id", strings.TrimSpace(id.SubjectID))
+		} else if logger != nil && !job.IsHeartbeat {
+			logger.Debug("memory_identity_unavailable", "source", "telegram", "reason", "missing_user_id")
 		}
 	}
 
@@ -201,17 +205,35 @@ func runTelegramTask(ctx context.Context, d Dependencies, logger *slog.Logger, l
 
 	publishText := shouldPublishTelegramText(final)
 
-	if publishText && !job.IsHeartbeat && memManager != nil && memIdentity.Enabled && strings.TrimSpace(memIdentity.SubjectID) != "" {
-		if err := updateTelegramMemory(ctx, logger, client, model, memManager, memIdentity, job, history, historyCap, final, requestTimeout); err != nil {
+	longTermSubjectID := resolveLongTermSubjectID(job, memIdentity)
+	if shouldWriteMemory(publishText, memManager, longTermSubjectID) {
+		if err := updateMemoryFromJob(ctx, logger, client, model, memManager, longTermSubjectID, job, history, historyCap, final, requestTimeout); err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
 				retryutil.AsyncRetry(logger, "memory_update", 2*time.Second, requestTimeout, func(retryCtx context.Context) error {
-					return updateTelegramMemory(retryCtx, logger, client, model, memManager, memIdentity, job, history, historyCap, final, requestTimeout)
+					return updateMemoryFromJob(retryCtx, logger, client, model, memManager, longTermSubjectID, job, history, historyCap, final, requestTimeout)
 				})
 			}
 			logger.Warn("memory_update_error", "error", err.Error())
 		}
 	}
 	return final, agentCtx, loadedSkills, reaction, nil
+}
+
+func resolveLongTermSubjectID(job telegramJob, memIdentity memory.Identity) string {
+	if job.IsHeartbeat {
+		return heartbeatMemorySessionID
+	}
+	if !memIdentity.Enabled {
+		return ""
+	}
+	return strings.TrimSpace(memIdentity.SubjectID)
+}
+
+func shouldWriteMemory(publishText bool, memManager *memory.Manager, longTermSubjectID string) bool {
+	if !publishText || memManager == nil {
+		return false
+	}
+	return strings.TrimSpace(longTermSubjectID) != ""
 }
 
 func runMAEPTask(ctx context.Context, d Dependencies, logger *slog.Logger, logOpts agent.LogOptions, client llm.Client, baseReg *tools.Registry, sharedGuard *guard.Guard, cfg agent.Config, model string, peerID string, history []llm.Message, stickySkills []string, runtimeOpts runtimeTaskOptions, task string) (*agent.Final, *agent.Context, []string, error) {
