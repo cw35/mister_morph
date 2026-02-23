@@ -67,3 +67,12 @@ func TestResolveLongTermSubjectID(t *testing.T) {
 		t.Fatalf("disabled identity subject = %q, want empty", got)
 	}
 }
+
+func TestShouldSkipTaskMessage(t *testing.T) {
+	if got := shouldSkipTaskMessage(telegramJob{IsHeartbeat: true}); got {
+		t.Fatalf("heartbeat should not skip task message")
+	}
+	if got := shouldSkipTaskMessage(telegramJob{IsHeartbeat: false}); !got {
+		t.Fatalf("non-heartbeat should skip task message")
+	}
+}

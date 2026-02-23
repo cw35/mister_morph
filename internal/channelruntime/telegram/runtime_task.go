@@ -184,7 +184,7 @@ func runTelegramTask(ctx context.Context, d Dependencies, logger *slog.Logger, l
 		Model:           model,
 		History:         llmHistory,
 		Meta:            meta,
-		SkipTaskMessage: true,
+		SkipTaskMessage: shouldSkipTaskMessage(job),
 	})
 	if err != nil {
 		return final, agentCtx, loadedSkills, nil, err
@@ -234,6 +234,11 @@ func shouldWriteMemory(publishText bool, memManager *memory.Manager, longTermSub
 		return false
 	}
 	return strings.TrimSpace(longTermSubjectID) != ""
+}
+
+func shouldSkipTaskMessage(job telegramJob) bool {
+	// Non-heartbeat runs already inject the current inbound text via llmHistory.
+	return !job.IsHeartbeat
 }
 
 func buildTelegramRegistry(baseReg *tools.Registry, chatType string) *tools.Registry {

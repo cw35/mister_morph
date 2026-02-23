@@ -384,7 +384,7 @@ Note: this path currently nests one heartbeat envelope inside `heartbeat`.
 
 3. Telegram normal chat run (default path)
 
-- File: `cmd/mistermorph/telegramcmd/command.go`
+- File: `internal/channelruntime/telegram/runtime_task.go`
 - Default payload when `job.Meta == nil`:
 
 ```json
@@ -397,9 +397,15 @@ Note: this path currently nests one heartbeat envelope inside `heartbeat`.
 }
 ```
 
+- Message injection behavior:
+  - Non-heartbeat Telegram runs set `SkipTaskMessage=true` to avoid duplicating the same inbound text.
+  - The current inbound text is already included via `llmHistory` (`historyWithCurrent`).
+
 4. Telegram scheduled heartbeat
 
-- File: `cmd/mistermorph/telegramcmd/command.go`
+- Files:
+  - `internal/channelruntime/telegram/runtime.go` (heartbeat job creation + meta)
+  - `internal/channelruntime/telegram/runtime_task.go` (RunOptions wiring)
 - Heartbeat worker payload from `buildHeartbeatMeta(...)`:
 
 ```json
@@ -421,6 +427,10 @@ Note: this path currently nests one heartbeat envelope inside `heartbeat`.
   }
 }
 ```
+
+- Message injection behavior:
+  - Heartbeat Telegram runs set `SkipTaskMessage=false`.
+  - This ensures `job.Text` (heartbeat checklist task, usually from `HEARTBEAT.md`) is appended as a user task message and reaches the model.
 
 5. MAEP inbound auto-reply run
 

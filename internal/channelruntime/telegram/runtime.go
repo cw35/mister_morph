@@ -511,13 +511,13 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 				if !job.IsHeartbeat {
 					typingStop = startTypingTicker(workerCtx, api, chatID, "typing", 4*time.Second)
 					defer typingStop()
-					if daemonStore != nil && strings.TrimSpace(job.TaskID) != "" {
-						startedAt := time.Now().UTC()
-						daemonStore.Update(job.TaskID, func(rec *daemonruntime.TaskInfo) {
-							rec.Status = daemonruntime.TaskRunning
-							rec.StartedAt = &startedAt
-						})
-					}
+				}
+				if daemonStore != nil && strings.TrimSpace(job.TaskID) != "" {
+					startedAt := time.Now().UTC()
+					daemonStore.Update(job.TaskID, func(rec *daemonruntime.TaskInfo) {
+						rec.Status = daemonruntime.TaskRunning
+						rec.StartedAt = &startedAt
+					})
 				}
 
 				runCtx, cancel := context.WithTimeout(workerCtx, taskTimeout)
@@ -529,7 +529,7 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 						return
 					}
 					displayErr := formatRuntimeError(runErr)
-					if !job.IsHeartbeat && daemonStore != nil && strings.TrimSpace(job.TaskID) != "" {
+					if daemonStore != nil && strings.TrimSpace(job.TaskID) != "" {
 						finishedAt := time.Now().UTC()
 						failedStatus := daemonruntime.TaskFailed
 						if isTaskContextCanceled(runErr) {
@@ -576,7 +576,7 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 
 				outText := formatFinalOutput(final)
 				publishText := shouldPublishTelegramText(final)
-				if !job.IsHeartbeat && daemonStore != nil && strings.TrimSpace(job.TaskID) != "" {
+				if daemonStore != nil && strings.TrimSpace(job.TaskID) != "" {
 					finishedAt := time.Now().UTC()
 					summary := daemonruntime.TruncateUTF8(outText, 4000)
 					daemonStore.Update(job.TaskID, func(rec *daemonruntime.TaskInfo) {
@@ -796,9 +796,13 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 							extra["last_success_utc"] = lastSuccess.UTC().Format(time.RFC3339)
 						}
 						meta := buildHeartbeatMeta(d, "telegram", hbInterval, hbChecklist, checklistEmpty, extra)
+						heartbeatRunAt := time.Now().UTC()
+						heartbeatTaskID := telegramHeartbeatTaskID(chatID, heartbeatRunAt)
 						job := telegramJob{
+							TaskID:          heartbeatTaskID,
 							ChatID:          chatID,
 							ChatType:        chatType,
+							SentAt:          heartbeatRunAt,
 							FromUserID:      fromUserID,
 							FromUsername:    fromUsername,
 							FromFirstName:   fromFirst,
@@ -809,6 +813,26 @@ func runTelegramLoop(ctx context.Context, d Dependencies, opts runtimeLoopOption
 							IsHeartbeat:     true,
 							Meta:            meta,
 							MentionUsers:    mentionUsers,
+						}
+						if daemonStore != nil && strings.TrimSpace(job.TaskID) != "" {
+							daemonStore.Upsert(daemonruntime.TaskInfo{
+								ID:        job.TaskID,
+								Status:    daemonruntime.TaskQueued,
+								Task:      daemonruntime.TruncateUTF8(task, 2000),
+								Model:     strings.TrimSpace(model),
+								Timeout:   taskTimeout.String(),
+								CreatedAt: heartbeatRunAt,
+								Result: map[string]any{
+									"source":                 "telegram",
+									"trigger":                "heartbeat",
+									"telegram_chat_id":       chatID,
+									"telegram_chat_type":     chatType,
+									"telegram_from_user_id":  fromUserID,
+									"telegram_from_username": fromUsername,
+									"telegram_from_name":     fromName,
+									"mention_users":          append([]string(nil), mentionUsers...),
+								},
+							})
 						}
 						select {
 						case w.Jobs <- job:
@@ -1393,6 +1417,13 @@ func telegramOutboundKind(correlationID string) string {
 
 func telegramTaskID(chatID int64, messageID int64) string {
 	return daemonruntime.BuildTaskID("tg", chatID, messageID)
+}
+
+func telegramHeartbeatTaskID(chatID int64, scheduledAt time.Time) string {
+	if scheduledAt.IsZero() {
+		scheduledAt = time.Now().UTC()
+	}
+	return daemonruntime.BuildTaskID("tg_hb", chatID, scheduledAt.UnixNano())
 }
 
 func isTaskContextCanceled(err error) bool {
