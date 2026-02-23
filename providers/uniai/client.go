@@ -2,6 +2,8 @@ package uniai
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -122,6 +124,9 @@ func (c *Client) Chat(ctx context.Context, req llm.Request) (llm.Result, error) 
 	}
 
 	toolCalls := toLLMToolCalls(resp.ToolCalls)
+	if strings.EqualFold(strings.TrimSpace(c.provider), "gemini") {
+		toolCalls = ensureGeminiToolCallThoughtSignatures(toolCalls)
+	}
 
 	return llm.Result{
 		Text:      resp.Text,
@@ -332,6 +337,60 @@ func toUniaiToolCallsFromLLM(calls []llm.ToolCall) []uniaiapi.ToolCall {
 		return nil
 	}
 	return out
+}
+
+func ensureGeminiToolCallThoughtSignatures(calls []llm.ToolCall) []llm.ToolCall {
+	if len(calls) == 0 {
+		return calls
+	}
+
+	out := append([]llm.ToolCall(nil), calls...)
+	lastSig := ""
+	for i := range out {
+		sig := strings.TrimSpace(out[i].ThoughtSignature)
+		if sig == "" {
+			_, decoded := splitGeminiToolCallIDAndThoughtSignature(out[i].ID)
+			sig = decoded
+		}
+		if sig == "" {
+			sig = lastSig
+		}
+		if sig == "" {
+			sig = synthesizeGeminiThoughtSignature(out[i])
+		}
+		out[i].ThoughtSignature = sig
+		if sig != "" {
+			lastSig = sig
+		}
+	}
+	return out
+}
+
+func splitGeminiToolCallIDAndThoughtSignature(callID string) (string, string) {
+	callID = strings.TrimSpace(callID)
+	if callID == "" {
+		return "", ""
+	}
+	idx := strings.LastIndex(callID, "|ts:")
+	if idx <= 0 || idx+4 >= len(callID) {
+		return callID, ""
+	}
+	encoded := callID[idx+4:]
+	decoded, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		return callID, ""
+	}
+	baseID := strings.TrimSpace(callID[:idx])
+	if baseID == "" {
+		return callID, ""
+	}
+	return baseID, string(decoded)
+}
+
+func synthesizeGeminiThoughtSignature(call llm.ToolCall) string {
+	seed := strings.TrimSpace(call.ID) + "\n" + strings.TrimSpace(call.Name) + "\n" + strings.TrimSpace(call.RawArguments)
+	sum := sha256.Sum256([]byte(seed))
+	return fmt.Sprintf("mmts_%x", sum[:8])
 }
 
 func shouldRetryWithoutResponseFormat(err error) bool {

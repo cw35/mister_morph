@@ -94,3 +94,64 @@ func TestToolCallThoughtSignatureRoundTrip(t *testing.T) {
 		t.Fatalf("expected exact raw arguments %q, got %q", origArgs, uniaiCalls[0].Function.Arguments)
 	}
 }
+
+func TestEnsureGeminiToolCallThoughtSignaturesDecodeFromID(t *testing.T) {
+	rawID := "call_1|ts:c2lnX2Zyb21faWQ"
+	calls := []llm.ToolCall{{
+		ID:           rawID,
+		Name:         "read_file",
+		RawArguments: `{"path":"/tmp/a.txt"}`,
+	}}
+
+	out := ensureGeminiToolCallThoughtSignatures(calls)
+	if len(out) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(out))
+	}
+	if out[0].ThoughtSignature != "sig_from_id" {
+		t.Fatalf("expected signature decoded from id, got %q", out[0].ThoughtSignature)
+	}
+}
+
+func TestEnsureGeminiToolCallThoughtSignaturesCarryForward(t *testing.T) {
+	calls := []llm.ToolCall{
+		{
+			ID:               "call_1",
+			Name:             "read_file",
+			RawArguments:     `{"path":"a"}`,
+			ThoughtSignature: "sig_1",
+		},
+		{
+			ID:           "call_2",
+			Name:         "read_file",
+			RawArguments: `{"path":"b"}`,
+		},
+	}
+
+	out := ensureGeminiToolCallThoughtSignatures(calls)
+	if len(out) != 2 {
+		t.Fatalf("expected 2 calls, got %d", len(out))
+	}
+	if out[1].ThoughtSignature != "sig_1" {
+		t.Fatalf("expected second call to inherit prior signature, got %q", out[1].ThoughtSignature)
+	}
+}
+
+func TestEnsureGeminiToolCallThoughtSignaturesSynthesize(t *testing.T) {
+	calls := []llm.ToolCall{{
+		ID:           "call_42",
+		Name:         "read_file",
+		RawArguments: `{"path":"a"}`,
+	}}
+
+	out1 := ensureGeminiToolCallThoughtSignatures(calls)
+	out2 := ensureGeminiToolCallThoughtSignatures(calls)
+	if len(out1) != 1 || len(out2) != 1 {
+		t.Fatalf("unexpected output lengths: %d, %d", len(out1), len(out2))
+	}
+	if out1[0].ThoughtSignature == "" {
+		t.Fatalf("expected synthesized signature")
+	}
+	if out1[0].ThoughtSignature != out2[0].ThoughtSignature {
+		t.Fatalf("expected deterministic synthesized signature, got %q vs %q", out1[0].ThoughtSignature, out2[0].ThoughtSignature)
+	}
+}
