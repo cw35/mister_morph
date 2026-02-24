@@ -347,6 +347,18 @@ func (api *telegramAPI) sendMessageMarkdownV2(ctx context.Context, chatID int64,
 	return api.sendMessageMarkdownV2Reply(ctx, chatID, text, disablePreview, 0)
 }
 
+func (api *telegramAPI) sendMessageMarkdownV1(ctx context.Context, chatID int64, text string, disablePreview bool) error {
+	return api.sendMessageMarkdownV1Reply(ctx, chatID, text, disablePreview, 0)
+}
+
+func (api *telegramAPI) sendMessageMarkdownV1Reply(ctx context.Context, chatID int64, text string, disablePreview bool, replyToMessageID int64) error {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		text = "(empty)"
+	}
+	return api.sendMessageWithParseModeReply(ctx, chatID, text, disablePreview, "Markdown", replyToMessageID)
+}
+
 func (api *telegramAPI) sendMessageMarkdownV2Reply(ctx context.Context, chatID int64, text string, disablePreview bool, replyToMessageID int64) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -371,7 +383,12 @@ func (api *telegramAPI) sendMessageMarkdownV2Reply(ctx context.Context, chatID i
 		slog.Warn("failed to send with MarkdownV2", "error", err)
 	}
 
-	slog.Warn("failed to send with MarkdownV2; fallback to plain text", "error", err)
+	slog.Warn("failed to send with MarkdownV2; fallback to MarkdownV1", "error", err)
+	v1Err := api.sendMessageMarkdownV1Reply(ctx, chatID, text, disablePreview, replyToMessageID)
+	if v1Err == nil {
+		return nil
+	}
+	slog.Warn("failed to send with MarkdownV1; fallback to plain text", "error", v1Err)
 	return api.sendMessageWithParseModeReply(ctx, chatID, text, disablePreview, "", replyToMessageID)
 }
 
