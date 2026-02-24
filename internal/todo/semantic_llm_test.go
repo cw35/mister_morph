@@ -64,9 +64,26 @@ func TestLLMSemanticResolverMatchCompleteIndexAmbiguous(t *testing.T) {
 	}
 }
 
-func TestLLMSemanticResolverRejectsNonStrictJSON(t *testing.T) {
+func TestLLMSemanticResolverParsesJSONCodeFence(t *testing.T) {
 	client := &stubTodoLLMClient{
 		replies: []string{"```json\n{\"keep_indices\":[0]}\n```"},
+	}
+	resolver := NewLLMSemanticResolver(client, "gpt-5.2")
+	got, err := resolver.SelectDedupKeepIndices(context.Background(), []entryutil.SemanticItem{
+		{CreatedAt: "2026-02-09 10:00", Content: "A"},
+		{CreatedAt: "2026-02-09 10:01", Content: "B"},
+	})
+	if err != nil {
+		t.Fatalf("expected code-fence json to be parsed, got err=%v", err)
+	}
+	if len(got) != 1 || got[0] != 0 {
+		t.Fatalf("unexpected keep indices: %#v", got)
+	}
+}
+
+func TestLLMSemanticResolverRejectsInvalidJSON(t *testing.T) {
+	client := &stubTodoLLMClient{
+		replies: []string{"not a json payload"},
 	}
 	resolver := NewLLMSemanticResolver(client, "gpt-5.2")
 	_, err := resolver.SelectDedupKeepIndices(context.Background(), []entryutil.SemanticItem{
@@ -74,6 +91,6 @@ func TestLLMSemanticResolverRejectsNonStrictJSON(t *testing.T) {
 		{CreatedAt: "2026-02-09 10:01", Content: "B"},
 	})
 	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "invalid semantic_dedup response") {
-		t.Fatalf("expected strict-json parse error, got %v", err)
+		t.Fatalf("expected parse error, got %v", err)
 	}
 }

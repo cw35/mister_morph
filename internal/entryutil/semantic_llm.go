@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"sort"
 	"strings"
 
+	"github.com/quailyquaily/mistermorph/internal/jsonutil"
 	"github.com/quailyquaily/mistermorph/llm"
 )
 
@@ -70,7 +70,7 @@ func (r *LLMSemanticResolver) SelectDedupKeepIndices(ctx context.Context, items 
 	var out struct {
 		KeepIndices []int `json:"keep_indices"`
 	}
-	if err := decodeStrictJSON(res.Text, &out); err != nil {
+	if err := jsonutil.DecodeWithFallback(res.Text, &out); err != nil {
 		return nil, fmt.Errorf("invalid semantic_dedup response: %w", err)
 	}
 	if len(out.KeepIndices) == 0 {
@@ -101,23 +101,4 @@ func (r *LLMSemanticResolver) validateReady() error {
 		return fmt.Errorf("semantic resolver missing llm model")
 	}
 	return nil
-}
-
-func decodeStrictJSON(raw string, dst any) error {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return fmt.Errorf("empty llm response")
-	}
-	dec := json.NewDecoder(strings.NewReader(raw))
-	if err := dec.Decode(dst); err != nil {
-		return err
-	}
-	var extra any
-	if err := dec.Decode(&extra); err != nil {
-		if err == io.EOF {
-			return nil
-		}
-		return err
-	}
-	return fmt.Errorf("extra non-json payload detected")
 }

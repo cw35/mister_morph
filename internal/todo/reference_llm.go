@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/quailyquaily/mistermorph/internal/jsonutil"
 	"github.com/quailyquaily/mistermorph/internal/runtimeclock"
 	"github.com/quailyquaily/mistermorph/llm"
 )
@@ -153,8 +154,8 @@ func (r *LLMReferenceResolver) ResolveAddContent(ctx context.Context, content st
 		Warnings  []string           `json:"warnings,omitempty"`
 		Missing   []MissingReference `json:"missing,omitempty"`
 	}
-	if err := decodeStrictJSON(res.Text, &out); err != nil {
-		slog.Default().Debug("todo_reference_resolve_failed", "error", err.Error())
+	if err := jsonutil.DecodeWithFallback(res.Text, &out); err != nil {
+		slog.Default().Debug("todo_reference_resolve_failed", "error", err.Error(), "response_text", res.Text)
 		return "", nil, fmt.Errorf("invalid reference_resolve response: %w", err)
 	}
 

@@ -95,14 +95,31 @@ func TestLLMReferenceResolverResolveAddContentMissingReference(t *testing.T) {
 	}
 }
 
-func TestLLMReferenceResolverResolveAddContentRejectsNonStrictJSON(t *testing.T) {
+func TestLLMReferenceResolverResolveAddContentParsesJSONCodeFence(t *testing.T) {
 	client := &stubTodoLLMClient{
 		replies: []string{"```json\n{\"status\":\"ok\",\"rewritten_content\":\"x\"}\n```"},
 	}
 	resolver := NewLLMReferenceResolver(client, "gpt-5.2")
+	rewritten, warnings, err := resolver.ResolveAddContent(context.Background(), "提醒 John 明天确认", []string{"John"}, ContactSnapshot{}, AddResolveContext{})
+	if err != nil {
+		t.Fatalf("expected code-fence json to be parsed, got %v", err)
+	}
+	if rewritten != "x" {
+		t.Fatalf("rewritten mismatch: %q", rewritten)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("warnings mismatch: %#v", warnings)
+	}
+}
+
+func TestLLMReferenceResolverResolveAddContentRejectsInvalidJSON(t *testing.T) {
+	client := &stubTodoLLMClient{
+		replies: []string{"not a json payload"},
+	}
+	resolver := NewLLMReferenceResolver(client, "gpt-5.2")
 	_, _, err := resolver.ResolveAddContent(context.Background(), "提醒 John 明天确认", []string{"John"}, ContactSnapshot{}, AddResolveContext{})
 	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "invalid reference_resolve response") {
-		t.Fatalf("expected strict-json parse error, got %v", err)
+		t.Fatalf("expected parse error, got %v", err)
 	}
 }
 

@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/quailyquaily/mistermorph/internal/entryutil"
+	"github.com/quailyquaily/mistermorph/internal/jsonutil"
 	"github.com/quailyquaily/mistermorph/llm"
 )
 
@@ -83,7 +83,7 @@ func (r *LLMSemanticResolver) MatchCompleteIndex(ctx context.Context, query stri
 		Index            *int   `json:"index,omitempty"`
 		CandidateIndices []int  `json:"candidate_indices,omitempty"`
 	}
-	if err := decodeStrictJSON(res.Text, &out); err != nil {
+	if err := jsonutil.DecodeWithFallback(res.Text, &out); err != nil {
 		return -1, fmt.Errorf("invalid semantic_match response: %w", err)
 	}
 
@@ -121,23 +121,4 @@ func (r *LLMSemanticResolver) validateReady() error {
 		return fmt.Errorf("todo semantic resolver missing llm model")
 	}
 	return nil
-}
-
-func decodeStrictJSON(raw string, dst any) error {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return fmt.Errorf("empty llm response")
-	}
-	dec := json.NewDecoder(strings.NewReader(raw))
-	if err := dec.Decode(dst); err != nil {
-		return err
-	}
-	var extra any
-	if err := dec.Decode(&extra); err != nil {
-		if err == io.EOF {
-			return nil
-		}
-		return err
-	}
-	return fmt.Errorf("extra non-json payload detected")
 }

@@ -42,7 +42,17 @@ func FindJSONPayload(text string) ([]byte, error) {
 
 // DecodeWithFallback finds a JSON payload and unmarshals it into dst.
 func DecodeWithFallback(text string, dst any) error {
-	data, err := FindJSONPayload(text)
+	raw := strings.TrimSpace(text)
+	if raw == "" {
+		return ErrEmptyInput
+	}
+
+	// Fast path: most providers already return plain JSON when ForceJSON is on.
+	if err := json.Unmarshal([]byte(raw), dst); err == nil {
+		return nil
+	}
+
+	data, err := FindJSONPayload(raw)
 	if err != nil {
 		return err
 	}
