@@ -20,7 +20,7 @@ import (
 	busruntime "github.com/quailyquaily/mistermorph/internal/bus"
 	slackbus "github.com/quailyquaily/mistermorph/internal/bus/adapters/slack"
 	telegrambus "github.com/quailyquaily/mistermorph/internal/bus/adapters/telegram"
-	"github.com/quailyquaily/mistermorph/internal/refid"
+	refid "github.com/quailyquaily/mistermorph/internal/entryutil/refid"
 	"github.com/quailyquaily/mistermorph/internal/slackclient"
 )
 

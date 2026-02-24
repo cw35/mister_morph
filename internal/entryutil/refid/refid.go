@@ -7,7 +7,8 @@ import (
 	"strings"
 )
 
-var protocolPattern = regexp.MustCompile(`^[a-z][a-z0-9+._-]*$`)
+// Protocol names are alphanumeric only (letters/digits).
+var protocolPattern = regexp.MustCompile(`^[a-z][a-z0-9]*$`)
 
 // Parse parses a generic reference id in "protocol:id" form.
 func Parse(raw string) (protocol string, id string, ok bool) {

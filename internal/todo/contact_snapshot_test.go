@@ -63,23 +63,3 @@ func TestLoadContactSnapshot(t *testing.T) {
 		}
 	}
 }
-
-func TestValidateReachableReferences(t *testing.T) {
-	snap := ContactSnapshot{
-		ReachableIDs: []string{"slack:T001:D002", "tg:1001"},
-	}
-
-	if err := ValidateReachableReferences("提醒 [John](tg:1001) 明天确认", snap); err != nil {
-		t.Fatalf("ValidateReachableReferences(snapshot tg id) error = %v", err)
-	}
-	if err := ValidateReachableReferences("提醒 [John](slack:T001:D002) 明天确认", snap); err != nil {
-		t.Fatalf("ValidateReachableReferences(snapshot id) error = %v", err)
-	}
-	if err := ValidateReachableReferences("提醒 [John](peer:unknown) 明天确认", snap); err != nil {
-		t.Fatalf("ValidateReachableReferences(custom protocol) error = %v", err)
-	}
-	err := ValidateReachableReferences("提醒 [John](tg:9999) 明天确认", snap)
-	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "not reachable") {
-		t.Fatalf("expected not-reachable error for known protocol, got %v", err)
-	}
-}

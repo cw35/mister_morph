@@ -221,11 +221,6 @@ func (t *TodoUpdateTool) Execute(ctx context.Context, params map[string]any) (st
 					return "", requiredErr
 				}
 			}
-			if !fallbackRawWrite {
-				if validErr := todo.ValidateReachableReferences(rewritten, snapshot); validErr != nil {
-					return "", validErr
-				}
-			}
 		}
 		result, err = store.AddWithChatID(ctx, rewritten, chatID)
 		if err == nil && len(warnings) > 0 {

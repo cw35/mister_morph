@@ -6,78 +6,15 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/quailyquaily/mistermorph/internal/refid"
+	refid "github.com/quailyquaily/mistermorph/internal/entryutil/refid"
 )
 
 var (
-	// Strip already-annotated mentions like "[John](tg:1001)" before
-	// scanning for missing first-person references.
-	referenceLinkPattern    = regexp.MustCompile(`\[[^\[\]\n]+\]\(([^()]+)\)`)
-	annotatedMentionPattern = regexp.MustCompile(`\[[^\[\]\n]+\]\([^()]+\)`)
-	englishSelfWordPattern  = regexp.MustCompile(`(?i)\b(i|me|my|myself|we|us|our|ourselves)\b`)
+	englishSelfWordPattern = regexp.MustCompile(`(?i)\b(i|me|my|myself|we|us|our|ourselves)\b`)
 )
 
 func ExtractReferenceIDs(content string) ([]string, error) {
-	content = strings.TrimSpace(content)
-	if content == "" {
-		return nil, fmt.Errorf("content is required")
-	}
-	matches := referenceLinkPattern.FindAllStringSubmatch(content, -1)
-	if len(matches) == 0 {
-		return nil, nil
-	}
-	seen := make(map[string]bool, len(matches))
-	out := make([]string, 0, len(matches))
-	for _, m := range matches {
-		if len(m) < 2 {
-			continue
-		}
-		ref := strings.TrimSpace(m[1])
-		if ref == "" {
-			return nil, fmt.Errorf("missing reference id")
-		}
-		if !isValidReferenceID(ref) {
-			return nil, fmt.Errorf("invalid reference id: %s", ref)
-		}
-		if seen[ref] {
-			continue
-		}
-		seen[ref] = true
-		out = append(out, ref)
-	}
-	return out, nil
-}
-
-func ValidateReachableReferences(content string, snapshot ContactSnapshot) error {
-	refs, err := ExtractReferenceIDs(content)
-	if err != nil {
-		return err
-	}
-	knownProtocols := make(map[string]bool, len(snapshot.ReachableIDs))
-	for _, known := range snapshot.ReachableIDs {
-		protocol, _, ok := refid.Parse(known)
-		if !ok {
-			continue
-		}
-		knownProtocols[protocol] = true
-	}
-	for _, ref := range refs {
-		ref = strings.TrimSpace(ref)
-		if ref == "" {
-			continue
-		}
-		if snapshot.HasReachableID(ref) {
-			continue
-		}
-		// Forward-compatibility: if this protocol does not exist in current
-		// contact snapshot, do not hard-fail reachability.
-		protocol, _, ok := refid.Parse(ref)
-		if ok && !knownProtocols[protocol] {
-			continue
-		}
-		return fmt.Errorf("reference id is not reachable: %s", ref)
-	}
-	return nil
+	return refid.ExtractMarkdownReferenceIDs(content)
 }
 
 // ValidateRequiredReferenceMentions enforces that first-person object mentions
@@ -87,7 +24,7 @@ func ValidateRequiredReferenceMentions(content string, snapshot ContactSnapshot)
 	if content == "" {
 		return fmt.Errorf("content is required")
 	}
-	stripped := annotatedMentionPattern.ReplaceAllString(content, "")
+	stripped := refid.StripMarkdownReferenceLinks(content)
 	mention := firstPersonMention(stripped)
 	if mention == "" {
 		return nil
@@ -95,7 +32,9 @@ func ValidateRequiredReferenceMentions(content string, snapshot ContactSnapshot)
 
 	item := MissingReference{Mention: mention}
 	if ref := suggestSelfReferenceID(snapshot); ref != "" {
-		item.Suggestion = formatMentionLink(mention, ref)
+		if suggestion, err := refid.FormatMarkdownReference(mention, ref); err == nil {
+			item.Suggestion = suggestion
+		}
 	}
 	return &MissingReferenceIDError{Items: []MissingReference{item}}
 }
@@ -115,12 +54,12 @@ func AnnotateFirstPersonReference(content string, refID string) (string, bool, e
 		return "", false, fmt.Errorf("invalid reference id: %s", refID)
 	}
 
-	stripped := annotatedMentionPattern.ReplaceAllString(content, "")
+	stripped := refid.StripMarkdownReferenceLinks(content)
 	if firstPersonMention(stripped) == "" {
 		return content, false, nil
 	}
 
-	linkRanges := markdownLinkRanges(content)
+	linkRanges := refid.MarkdownReferenceLinkRanges(content)
 	for _, token := range []string{"我们", "本人", "我"} {
 		if rewritten, ok := annotateFirstUnannotatedLiteral(content, token, refID, linkRanges); ok {
 			return rewritten, true, nil
@@ -161,11 +100,14 @@ func annotateFirstUnannotatedLiteral(content string, token string, refID string,
 		}
 		start := searchPos + off
 		end := start + len(token)
-		if withinMarkdownLink(ranges, start, end) {
+		if refid.WithinMarkdownReferenceLink(ranges, start, end) {
 			searchPos = end
 			continue
 		}
-		annotated := formatMentionLink(token, refID)
+		annotated, err := refid.FormatMarkdownReference(token, refID)
+		if err != nil {
+			return content, false
+		}
 		return content[:start] + annotated + content[end:], true
 	}
 }
@@ -180,47 +122,17 @@ func annotateFirstUnannotatedEnglishSelf(content string, refID string, ranges []
 		if start < 0 || end > len(content) || start >= end {
 			continue
 		}
-		if withinMarkdownLink(ranges, start, end) {
+		if refid.WithinMarkdownReferenceLink(ranges, start, end) {
 			continue
 		}
 		word := content[start:end]
-		annotated := formatMentionLink(word, refID)
+		annotated, err := refid.FormatMarkdownReference(word, refID)
+		if err != nil {
+			return content, false
+		}
 		return content[:start] + annotated + content[end:], true
 	}
 	return content, false
-}
-
-func markdownLinkRanges(content string) [][2]int {
-	indices := annotatedMentionPattern.FindAllStringIndex(content, -1)
-	if len(indices) == 0 {
-		return nil
-	}
-	out := make([][2]int, 0, len(indices))
-	for _, pair := range indices {
-		if len(pair) != 2 || pair[0] < 0 || pair[1] <= pair[0] || pair[1] > len(content) {
-			continue
-		}
-		out = append(out, [2]int{pair[0], pair[1]})
-	}
-	return out
-}
-
-func withinMarkdownLink(ranges [][2]int, start int, end int) bool {
-	if len(ranges) == 0 || start < 0 || end <= start {
-		return false
-	}
-	for _, pair := range ranges {
-		if start >= pair[0] && end <= pair[1] {
-			return true
-		}
-	}
-	return false
-}
-
-func formatMentionLink(label string, refID string) string {
-	label = strings.TrimSpace(label)
-	refID = strings.TrimSpace(refID)
-	return "[" + label + "](" + refID + ")"
 }
 
 func suggestSelfReferenceID(snapshot ContactSnapshot) string {

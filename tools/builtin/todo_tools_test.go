@@ -411,6 +411,44 @@ func TestTodoUpdateAddSelfReferenceResolvedFromTelegramContext(t *testing.T) {
 	}
 }
 
+func TestTodoUpdateAddDoesNotValidateReachability(t *testing.T) {
+	root := t.TempDir()
+	wip := filepath.Join(root, "TODO.md")
+	done := filepath.Join(root, "TODO.DONE.md")
+	contactsDir := filepath.Join(root, "contacts")
+	seedTodoContacts(t, contactsDir)
+
+	client := &stubTodoToolLLMClient{
+		replies: []string{
+			`{"status":"ok","rewritten_content":"提醒 [John](tg:9999) 明天确认内容"}`,
+		},
+	}
+	update := NewTodoUpdateToolWithLLM(true, wip, done, contactsDir, client, "gpt-5.2")
+	out, err := update.Execute(context.Background(), map[string]any{
+		"action":  "add",
+		"content": "提醒 John 明天确认内容",
+		"people":  []any{"John"},
+	})
+	if err != nil {
+		t.Fatalf("expected add success without reachability validation, got error: %v", err)
+	}
+	var parsed struct {
+		OK    bool `json:"ok"`
+		Entry struct {
+			Content string `json:"content"`
+		} `json:"entry"`
+	}
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("todo_update add json parse error = %v", err)
+	}
+	if !parsed.OK {
+		t.Fatalf("expected ok=true, got %s", out)
+	}
+	if parsed.Entry.Content != "提醒 [John](tg:9999) 明天确认内容" {
+		t.Fatalf("entry content mismatch: got %q", parsed.Entry.Content)
+	}
+}
+
 func seedTodoContacts(t *testing.T, contactsDir string) {
 	t.Helper()
 	svc := contacts.NewService(contacts.NewFileStore(contactsDir))

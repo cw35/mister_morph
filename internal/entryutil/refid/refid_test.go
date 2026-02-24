@@ -26,6 +26,9 @@ func TestIsValid(t *testing.T) {
 	if !IsValid("peer:12D3KooWPeer") {
 		t.Fatalf("IsValid(custom protocol) should be true")
 	}
+	if IsValid("peer-v2:12D3KooWPeer") {
+		t.Fatalf("IsValid(protocol with punctuation) should be false")
+	}
 	if IsValid("not-a-reference") {
 		t.Fatalf("IsValid(invalid) should be false")
 	}

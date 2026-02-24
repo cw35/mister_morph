@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/quailyquaily/mistermorph/internal/entryutil"
-	"github.com/quailyquaily/mistermorph/internal/refid"
+	refid "github.com/quailyquaily/mistermorph/internal/entryutil/refid"
 )
 
 func (s *Store) Add(ctx context.Context, raw string) (UpdateResult, error) {

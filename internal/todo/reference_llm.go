@@ -104,11 +104,11 @@ func (r *LLMReferenceResolver) ResolveAddContent(ctx context.Context, content st
 			"content": content,
 			"people":  people,
 		},
-		"input_raw":    runtime.UserInputRaw,
-		"runtime":      runtimeMeta,
-		"contacts":     snapshot.Contacts,
-		"allowed_ids":  snapshot.ReachableIDs,
-		"output_rules": []string{"strict_json_only"},
+		"input_raw":     runtime.UserInputRaw,
+		"runtime":       runtimeMeta,
+		"contacts":      snapshot.Contacts,
+		"reachable_ids": snapshot.ReachableIDs,
+		"output_rules":  []string{"strict_json_only"},
 	}
 	input, _ := json.Marshal(payload)
 
@@ -122,12 +122,11 @@ func (r *LLMReferenceResolver) ResolveAddContent(ctx context.Context, content st
 		"If `input_raw` mentions a time (explicit or relative), resolve it with current time context in `runtime` (now_local/timezone/utc_offset) and rewrite it as exact `YYYY-MM-DD hh:mm`.",
 		"Must consider first-person references with speaker context: ",
 		"- if the speaker mention themselves (like 'I', 'me', '$SPEAKER'), resolve to their own contact if available; similarly, resolve mentions of the speaker's direct interlocutors to those contacts if available;",
-		"Attach IDs as `[Name](protocol:id)` where id is from allowed_ids, example input:",
+		"Attach IDs as `[Name](protocol:id)`, where id may be from reachable_ids, example input:",
 		"Notice $SPEAKER to tell Alice invites Bob to the meeting of Lucy.",
 		"and rewritten content (assume the $SPEAKER is 'Lyric'): ",
 		"Notice [Lyric](tg:98765) to tell [Alice](tg:12345) invites [Bob](slack:T123:D456) to the meeting of [Lucy](tg:@lucy).",
-		"If any person in `people` cannot be uniquely resolved to one allowed id, keep it in the rewritten content in the same form",
-		"Never invent IDs that are not listed in allowed_ids.",
+		"If any person in `people` cannot be uniquely resolved to one reachable id, keep it in the rewritten content in the same form",
 		"Preserve original language and intent. Keep the sentence natural.",
 	}, " ")
 

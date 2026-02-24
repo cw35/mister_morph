@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	refid "github.com/quailyquaily/mistermorph/internal/entryutil/refid"
 	"github.com/quailyquaily/mistermorph/internal/idempotency"
-	"github.com/quailyquaily/mistermorph/internal/refid"
 )
 
 const (
