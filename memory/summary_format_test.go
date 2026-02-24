@@ -13,6 +13,7 @@ func TestBuildAndParseShortTermSummaryBody(t *testing.T) {
 		SummaryItems: []SummaryItem{
 			{Created: "2026-02-11 09:30", Content: "The agent discussed the proposal with [Alice](tg:@alice)."},
 			{Created: "2026-02-11 09:40", Content: "The agent received review feedback from [Bob](tg:@bob)."},
+			{Created: "2026-02-11 09:50", Content: "The agent synced with [Alic](aqua:123Dfjvjkdkd000s)."},
 		},
 	}
 	body := BuildShortTermBody(content)
@@ -22,10 +23,13 @@ func TestBuildAndParseShortTermSummaryBody(t *testing.T) {
 	if !strings.Contains(body, "- [Created](2026-02-11 09:30) | The agent discussed the proposal with [Alice](tg:@alice).") {
 		t.Fatalf("missing first summary item: %q", body)
 	}
+	if !strings.Contains(body, "[Alic](aqua:123Dfjvjkdkd000s)") {
+		t.Fatalf("missing custom protocol summary item: %q", body)
+	}
 
 	parsed := ParseShortTermContent(body)
-	if len(parsed.SummaryItems) != 2 {
-		t.Fatalf("summary items count mismatch: got %d want 2", len(parsed.SummaryItems))
+	if len(parsed.SummaryItems) != 3 {
+		t.Fatalf("summary items count mismatch: got %d want 3", len(parsed.SummaryItems))
 	}
 	if parsed.SummaryItems[0].Created != "2026-02-11 09:30" {
 		t.Fatalf("created mismatch: got %q", parsed.SummaryItems[0].Created)

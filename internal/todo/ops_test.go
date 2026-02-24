@@ -99,7 +99,7 @@ func TestStoreAddRejectsInvalidReferenceID(t *testing.T) {
 	}
 }
 
-func TestStoreAddRejectsUnsupportedReferenceID(t *testing.T) {
+func TestStoreAddAcceptsCustomProtocolReferenceID(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(filepath.Join(root, "TODO.md"), filepath.Join(root, "TODO.DONE.md"))
 	store.Semantics = stubSemantics{}
@@ -108,10 +108,7 @@ func TestStoreAddRejectsUnsupportedReferenceID(t *testing.T) {
 	}
 
 	_, err := store.Add(context.Background(), "提醒 [Momo](peer:12D3KooWPeer) 明天回复")
-	if err == nil {
-		t.Fatalf("expected Add() to fail for unsupported reference id")
-	}
-	if !strings.Contains(strings.ToLower(err.Error()), "invalid reference id") {
-		t.Fatalf("unexpected error: %v", err)
+	if err != nil {
+		t.Fatalf("expected Add() to accept custom protocol reference id, got %v", err)
 	}
 }

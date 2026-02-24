@@ -92,6 +92,26 @@ func TestStoreAddWithChatIDAndCompleteKeepsChatID(t *testing.T) {
 	}
 }
 
+func TestStoreAddWithCustomProtocolChatID(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(filepath.Join(root, "TODO.md"), filepath.Join(root, "TODO.DONE.md"))
+	store.Semantics = stubSemantics{}
+	store.Now = func() time.Time {
+		return time.Date(2026, 2, 11, 9, 30, 0, 0, time.UTC)
+	}
+
+	addRes, err := store.AddWithChatID(context.Background(), "提醒 [John](tg:1001) 提交报告", "SLACK:T123:C456")
+	if err != nil {
+		t.Fatalf("AddWithChatID() error = %v", err)
+	}
+	if addRes.Entry == nil {
+		t.Fatalf("AddWithChatID() missing entry")
+	}
+	if addRes.Entry.ChatID != "slack:T123:C456" {
+		t.Fatalf("chat_id mismatch: got %q want %q", addRes.Entry.ChatID, "slack:T123:C456")
+	}
+}
+
 func TestStoreAddWithInvalidChatID(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(filepath.Join(root, "TODO.md"), filepath.Join(root, "TODO.DONE.md"))
@@ -100,7 +120,7 @@ func TestStoreAddWithInvalidChatID(t *testing.T) {
 		return time.Date(2026, 2, 11, 9, 30, 0, 0, time.UTC)
 	}
 
-	_, err := store.AddWithChatID(context.Background(), "提醒 [John](tg:1001) 提交报告", "tg:@john")
+	_, err := store.AddWithChatID(context.Background(), "提醒 [John](tg:1001) 提交报告", "bad_chat_id")
 	if err == nil {
 		t.Fatalf("AddWithChatID() expected invalid chat_id error")
 	}

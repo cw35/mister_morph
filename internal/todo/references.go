@@ -212,16 +212,8 @@ func suggestSelfReferenceID(snapshot ContactSnapshot) string {
 	if len(ids) == 0 {
 		return ""
 	}
-
-	tgIDs := make([]string, 0, len(ids))
-	for _, id := range ids {
-		if strings.HasPrefix(id, "tg:") {
-			tgIDs = append(tgIDs, id)
-		}
-	}
-	tgIDs = dedupeSortedStrings(tgIDs)
-	if len(tgIDs) == 1 {
-		return tgIDs[0]
+	if len(ids) == 1 {
+		return ids[0]
 	}
 
 	preferred := make([]string, 0, len(snapshot.Contacts))

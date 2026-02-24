@@ -76,7 +76,7 @@ func TestValidateReachableReferences(t *testing.T) {
 		t.Fatalf("ValidateReachableReferences(snapshot id) error = %v", err)
 	}
 	err := ValidateReachableReferences("提醒 [John](peer:unknown) 明天确认", snap)
-	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "invalid reference id") {
-		t.Fatalf("expected invalid reference id error, got %v", err)
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "not reachable") {
+		t.Fatalf("expected not-reachable error, got %v", err)
 	}
 }

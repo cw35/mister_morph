@@ -162,7 +162,7 @@ func TestTodoUpdateToolAddRejectsInvalidChatID(t *testing.T) {
 		"action":  "add",
 		"content": "提醒 John 提交评估报告",
 		"people":  []any{"John"},
-		"chat_id": "tg:@john",
+		"chat_id": "invalid chat id",
 	})
 	if err == nil {
 		t.Fatalf("todo_update add expected invalid chat_id error")

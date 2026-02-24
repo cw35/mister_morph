@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -12,10 +11,7 @@ import (
 )
 
 var (
-	refIDPatternA = regexp.MustCompile(`^tg:-?\d+$`)
-	refIDPatternB = regexp.MustCompile(`^tg:@[A-Za-z0-9_]+$`)
-	refIDPatternC = regexp.MustCompile(`^slack:[A-Za-z0-9._:-]+$`)
-	refIDPatternD = regexp.MustCompile(`^discord:[A-Za-z0-9._:-]+$`)
+	referenceProtocolPattern = regexp.MustCompile(`^[a-z][a-z0-9+._-]*$`)
 )
 
 func (s *Store) Add(ctx context.Context, raw string) (UpdateResult, error) {
@@ -252,21 +248,19 @@ func validateEntryReferences(content string) error {
 }
 
 func isValidReferenceID(ref string) bool {
-	ref = strings.TrimSpace(ref)
-	if ref == "" {
-		return false
-	}
-	if refIDPatternA.MatchString(ref) ||
-		refIDPatternB.MatchString(ref) ||
-		refIDPatternC.MatchString(ref) ||
-		refIDPatternD.MatchString(ref) {
-		return true
-	}
-	return false
+	_, _, ok := splitReferenceID(ref)
+	return ok
 }
 
 func normalizeEntryChatID(raw string) string {
-	return strings.ToLower(strings.TrimSpace(raw))
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if normalized, ok := normalizeReferenceID(raw); ok {
+		return normalized
+	}
+	return raw
 }
 
 func validateEntryChatID(raw string) error {
@@ -281,14 +275,36 @@ func validateEntryChatID(raw string) error {
 }
 
 func isValidTODOChatID(chatID string) bool {
-	chatID = normalizeEntryChatID(chatID)
-	if !refIDPatternA.MatchString(chatID) {
-		return false
+	return isValidReferenceID(chatID)
+}
+
+func splitReferenceID(raw string) (protocol string, id string, ok bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", "", false
 	}
-	idText := strings.TrimSpace(strings.TrimPrefix(chatID, "tg:"))
-	id, err := strconv.ParseInt(idText, 10, 64)
-	if err != nil {
-		return false
+	idx := strings.IndexByte(raw, ':')
+	if idx <= 0 || idx >= len(raw)-1 {
+		return "", "", false
 	}
-	return id != 0
+	protocol = strings.ToLower(strings.TrimSpace(raw[:idx]))
+	id = strings.TrimSpace(raw[idx+1:])
+	if protocol == "" || id == "" {
+		return "", "", false
+	}
+	if !referenceProtocolPattern.MatchString(protocol) {
+		return "", "", false
+	}
+	if strings.ContainsAny(id, " \t\r\n()") {
+		return "", "", false
+	}
+	return protocol, id, true
+}
+
+func normalizeReferenceID(raw string) (string, bool) {
+	protocol, id, ok := splitReferenceID(raw)
+	if !ok {
+		return "", false
+	}
+	return protocol + ":" + id, true
 }
