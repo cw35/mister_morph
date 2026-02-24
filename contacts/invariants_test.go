@@ -147,6 +147,40 @@ func TestSendDecisionTelegramUsernameWithoutPrivateChatIDNotFound(t *testing.T) 
 	}
 }
 
+func TestSendDecisionUnknownProtocolNotFoundSuggestsProtocolChannel(t *testing.T) {
+	ctx := context.Background()
+	root := filepath.Join(t.TempDir(), "contacts")
+	store := NewFileStore(root)
+	svc := NewService(store)
+	now := time.Date(2026, 2, 10, 11, 50, 0, 0, time.UTC)
+
+	sender := &mockSender{accepted: true}
+	payload := base64.RawURLEncoding.EncodeToString([]byte("hello"))
+	_, err := svc.SendDecision(ctx, now, ShareDecision{
+		ContactID:      "aqua:abc123",
+		ItemID:         "manual_item_3b",
+		ContentType:    "application/json",
+		PayloadBase64:  payload,
+		IdempotencyKey: "manual:key3b",
+	}, sender)
+	if err == nil {
+		t.Fatalf("SendDecision() expected contact not found error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "hint: protocol") {
+		t.Fatalf("missing protocol hint prefix, got %q", msg)
+	}
+	if !strings.Contains(msg, "aqua:abc123") {
+		t.Fatalf("missing contact id in hint, got %q", msg)
+	}
+	if !strings.Contains(msg, "protocol/tool 'aqua'") {
+		t.Fatalf("missing protocol delivery hint, got %q", msg)
+	}
+	if sender.calls != 0 {
+		t.Fatalf("sender should not be called, got %d", sender.calls)
+	}
+}
+
 func TestSendDecisionChatIDHintAllowsTelegramChannelResolution(t *testing.T) {
 	ctx := context.Background()
 	root := filepath.Join(t.TempDir(), "contacts")

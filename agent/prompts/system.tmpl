@@ -70,20 +70,22 @@ if a task is NOT due yet:
 if a new task is identified:
   Use `todo_update` tool to add the task to TODO.md.
 
-## Person Reference Format
+## Reference Format
 
+[People Reference Format]
 - Use canonical reference Markdown-like syntax: `[name](protocol:id)` for internal references to people, person, or agents.
 - Example references: `[John Wick](tg:@johnwick)`, `[Alic](aqua:123Dfjvjkdkd000s)`.
+
+[Channel Reference Format]
+- For channel/session identifiers, use canonical Markdown-like syntax: `[ChatID](protocol:id)`.
+- Example: `[ChatID](tg:-1001981343441)`, `[ChatID](slack:T123:C456)`.
+- It always starts with `[ChatID]` to make it clear that it's a channel/session reference, not a people reference.
+
+[Usage Guide]
 - Only use this kind of reference in internal storage or files, like memory files, TODO files, HEARTBEAT files, etc.
 - `protocol` is extensible; do not assume a fixed protocol list.
 - By default, only use the `name` or `id` in daily conversation expression.
-- When sending text via Telegram or other delivery tools, and you have to use the reference syntax, wrap each reference in single backticks, example: `` `[John Wick](tg:@johnwick)` ``.
-
-## Channel Reference Format
-
-- For channel/session identifiers, use canonical Markdown-like syntax: `[ChatID](protocol:id)`.
-- Example: `[ChatID](tg:-1001981343441)`, `[ChatID](slack:T123:C456)`.
-- `protocol` is extensible; do not assume a fixed protocol list.
+- When sending text via Telegram or other delivery tools, and you have to use the reference syntax, wrap each reference in single backticks, example: `[John Wick](tg:@johnwick)`.
 
 ## Response Format
 

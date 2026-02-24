@@ -20,6 +20,7 @@ import (
 	busruntime "github.com/quailyquaily/mistermorph/internal/bus"
 	slackbus "github.com/quailyquaily/mistermorph/internal/bus/adapters/slack"
 	telegrambus "github.com/quailyquaily/mistermorph/internal/bus/adapters/telegram"
+	"github.com/quailyquaily/mistermorph/internal/refid"
 	"github.com/quailyquaily/mistermorph/internal/slackclient"
 )
 
@@ -187,7 +188,7 @@ func (s *RoutingSender) Send(ctx context.Context, contact contacts.Contact, deci
 	}
 	switch channel {
 	case contacts.ChannelSlack:
-		if slackTeamID, slackChannelID, hasSlackHint, slackHintErr := parseSlackChatIDHint(decision.ChatID); hasSlackHint || slackHintErr != nil {
+		if slackTeamID, slackChannelID, hasSlackHint, slackHintErr := refid.ParseSlackChatIDHint(decision.ChatID); hasSlackHint || slackHintErr != nil {
 			if slackHintErr != nil {
 				return false, false, slackHintErr
 			}
@@ -638,7 +639,7 @@ func ResolveTelegramTarget(contact contacts.Contact) (any, string, error) {
 }
 
 func ResolveTelegramTargetWithChatID(contact contacts.Contact, chatIDHint string) (any, string, error) {
-	hintID, hasHint, err := parseTelegramChatIDHint(chatIDHint)
+	hintID, hasHint, err := refid.ParseTelegramChatIDHint(chatIDHint)
 	if err != nil {
 		return nil, "", err
 	}
@@ -686,7 +687,7 @@ func ResolveSlackTarget(contact contacts.Contact) (slackbus.DeliveryTarget, stri
 }
 
 func ResolveSlackTargetWithChatID(contact contacts.Contact, chatIDHint string) (slackbus.DeliveryTarget, string, bool, error) {
-	teamID, channelID, hasHint, err := parseSlackChatIDHint(chatIDHint)
+	teamID, channelID, hasHint, err := refid.ParseSlackChatIDHint(chatIDHint)
 	if err != nil {
 		return slackbus.DeliveryTarget{}, "", hasHint, err
 	}
@@ -698,42 +699,6 @@ func ResolveSlackTargetWithChatID(contact contacts.Contact, chatIDHint string) (
 	}
 	target, chatType, err := ResolveSlackTarget(contact)
 	return target, chatType, false, err
-}
-
-func parseTelegramChatIDHint(raw string) (int64, bool, error) {
-	value := strings.TrimSpace(raw)
-	if value == "" {
-		return 0, false, nil
-	}
-	lower := strings.ToLower(value)
-	if strings.HasPrefix(lower, "tg:") {
-		value = strings.TrimSpace(value[len("tg:"):])
-	}
-	chatID, err := strconv.ParseInt(value, 10, 64)
-	if err != nil || chatID == 0 {
-		return 0, false, fmt.Errorf("invalid chat_id: %s", strings.TrimSpace(raw))
-	}
-	return chatID, true, nil
-}
-
-func parseSlackChatIDHint(raw string) (string, string, bool, error) {
-	value := strings.TrimSpace(raw)
-	if value == "" {
-		return "", "", false, nil
-	}
-	if !strings.HasPrefix(strings.ToLower(value), "slack:") {
-		return "", "", false, nil
-	}
-	parts := strings.Split(strings.TrimSpace(value[len("slack:"):]), ":")
-	if len(parts) != 2 {
-		return "", "", true, fmt.Errorf("invalid chat_id: %s", strings.TrimSpace(raw))
-	}
-	teamID := strings.TrimSpace(parts[0])
-	channelID := strings.TrimSpace(parts[1])
-	if teamID == "" || channelID == "" {
-		return "", "", true, fmt.Errorf("invalid chat_id: %s", strings.TrimSpace(raw))
-	}
-	return teamID, channelID, true, nil
 }
 
 func parseSlackContactID(raw string) (string, string, bool) {

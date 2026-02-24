@@ -75,8 +75,11 @@ func TestValidateReachableReferences(t *testing.T) {
 	if err := ValidateReachableReferences("提醒 [John](slack:T001:D002) 明天确认", snap); err != nil {
 		t.Fatalf("ValidateReachableReferences(snapshot id) error = %v", err)
 	}
-	err := ValidateReachableReferences("提醒 [John](peer:unknown) 明天确认", snap)
+	if err := ValidateReachableReferences("提醒 [John](peer:unknown) 明天确认", snap); err != nil {
+		t.Fatalf("ValidateReachableReferences(custom protocol) error = %v", err)
+	}
+	err := ValidateReachableReferences("提醒 [John](tg:9999) 明天确认", snap)
 	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "not reachable") {
-		t.Fatalf("expected not-reachable error, got %v", err)
+		t.Fatalf("expected not-reachable error for known protocol, got %v", err)
 	}
 }

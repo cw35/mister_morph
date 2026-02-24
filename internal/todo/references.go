@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/quailyquaily/mistermorph/internal/refid"
 )
 
 var (
@@ -51,12 +53,26 @@ func ValidateReachableReferences(content string, snapshot ContactSnapshot) error
 	if err != nil {
 		return err
 	}
+	knownProtocols := make(map[string]bool, len(snapshot.ReachableIDs))
+	for _, known := range snapshot.ReachableIDs {
+		protocol, _, ok := refid.Parse(known)
+		if !ok {
+			continue
+		}
+		knownProtocols[protocol] = true
+	}
 	for _, ref := range refs {
 		ref = strings.TrimSpace(ref)
 		if ref == "" {
 			continue
 		}
 		if snapshot.HasReachableID(ref) {
+			continue
+		}
+		// Forward-compatibility: if this protocol does not exist in current
+		// contact snapshot, do not hard-fail reachability.
+		protocol, _, ok := refid.Parse(ref)
+		if ok && !knownProtocols[protocol] {
 			continue
 		}
 		return fmt.Errorf("reference id is not reachable: %s", ref)

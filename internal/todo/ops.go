@@ -3,15 +3,11 @@ package todo
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/quailyquaily/mistermorph/internal/entryutil"
-)
-
-var (
-	referenceProtocolPattern = regexp.MustCompile(`^[a-z][a-z0-9+._-]*$`)
+	"github.com/quailyquaily/mistermorph/internal/refid"
 )
 
 func (s *Store) Add(ctx context.Context, raw string) (UpdateResult, error) {
@@ -248,19 +244,14 @@ func validateEntryReferences(content string) error {
 }
 
 func isValidReferenceID(ref string) bool {
-	_, _, ok := splitReferenceID(ref)
-	return ok
+	return refid.IsValid(ref)
 }
 
 func normalizeEntryChatID(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-	if normalized, ok := normalizeReferenceID(raw); ok {
+	if normalized, ok := refid.Normalize(raw); ok {
 		return normalized
 	}
-	return raw
+	return strings.TrimSpace(raw)
 }
 
 func validateEntryChatID(raw string) error {
@@ -276,35 +267,4 @@ func validateEntryChatID(raw string) error {
 
 func isValidTODOChatID(chatID string) bool {
 	return isValidReferenceID(chatID)
-}
-
-func splitReferenceID(raw string) (protocol string, id string, ok bool) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return "", "", false
-	}
-	idx := strings.IndexByte(raw, ':')
-	if idx <= 0 || idx >= len(raw)-1 {
-		return "", "", false
-	}
-	protocol = strings.ToLower(strings.TrimSpace(raw[:idx]))
-	id = strings.TrimSpace(raw[idx+1:])
-	if protocol == "" || id == "" {
-		return "", "", false
-	}
-	if !referenceProtocolPattern.MatchString(protocol) {
-		return "", "", false
-	}
-	if strings.ContainsAny(id, " \t\r\n()") {
-		return "", "", false
-	}
-	return protocol, id, true
-}
-
-func normalizeReferenceID(raw string) (string, bool) {
-	protocol, id, ok := splitReferenceID(raw)
-	if !ok {
-		return "", false
-	}
-	return protocol + ":" + id, true
 }
