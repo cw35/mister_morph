@@ -188,16 +188,7 @@ func (s *RoutingSender) Send(ctx context.Context, contact contacts.Contact, deci
 	}
 	switch channel {
 	case contacts.ChannelSlack:
-		if slackTeamID, slackChannelID, hasSlackHint, slackHintErr := refid.ParseSlackChatIDHint(decision.ChatID); hasSlackHint || slackHintErr != nil {
-			if slackHintErr != nil {
-				return false, false, slackHintErr
-			}
-			return s.publishSlack(ctx, slackbus.DeliveryTarget{
-				TeamID:    slackTeamID,
-				ChannelID: slackChannelID,
-			}, decision)
-		}
-		target, _, resolveErr := ResolveSlackTarget(contact)
+		target, _, _, resolveErr := ResolveSlackTargetWithChatID(contact, decision.ChatID)
 		if resolveErr != nil {
 			return false, false, resolveErr
 		}

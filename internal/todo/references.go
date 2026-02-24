@@ -50,9 +50,6 @@ func AnnotateFirstPersonReference(content string, refID string) (string, bool, e
 	if refID == "" {
 		return content, false, nil
 	}
-	if !isValidReferenceID(refID) {
-		return "", false, fmt.Errorf("invalid reference id: %s", refID)
-	}
 
 	stripped := refid.StripMarkdownReferenceLinks(content)
 	if firstPersonMention(stripped) == "" {
