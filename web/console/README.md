@@ -30,6 +30,8 @@ Stack:
   - list + detail (read-only)
 - Files:
   - unified editor for `TODO.md`, `TODO.DONE.md`, `ACTIVE.md`, `INACTIVE.md`, `IDENTITY.md`, `SOUL.md`, `HEARTBEAT.md`
+- Memory:
+  - browse and edit memory files (`index.md`, recent short-term session files)
 - Audit:
   - browse Guard audit files
   - windowed reads for large JSONL logs (`max_bytes` + `before`)
@@ -71,6 +73,11 @@ Files:
 - `GET /state/files`
 - `GET /state/files/{name}` (`TODO.md|TODO.DONE.md|ACTIVE.md|INACTIVE.md|IDENTITY.md|SOUL.md|HEARTBEAT.md`)
 - `PUT /state/files/{name}`
+
+Memory:
+- `GET /memory/files`
+- `GET /memory/files/{id}` (`index.md` or `YYYY-MM-DD/<session>.md`)
+- `PUT /memory/files/{id}`
 
 Audit:
 - `GET /audit/files`

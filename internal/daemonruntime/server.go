@@ -11,8 +11,11 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"runtime/debug"
 	"sort"
@@ -63,6 +66,11 @@ const (
 	auditMinLineLimit     int64 = 1
 	auditMaxLineLimit     int64 = 500
 	auditMaxCursorLines   int64 = 200 * 1000
+)
+
+var (
+	memoryDayPattern      = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+	memoryFilenamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*\.md$`)
 )
 
 type auditFileItem struct {
@@ -312,6 +320,42 @@ func RegisterRoutes(mux *http.ServeMux, opts RoutesOptions) {
 			return
 		}
 		handleTextFileDetail(w, r, spec.Name, spec.Path)
+	})
+
+	mux.HandleFunc("/memory/files", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if !checkAuth(r, authToken) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		paths := resolveRuntimeStatePaths()
+		items, err := listMemoryFiles(paths.memoryDir)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"default_id": "index.md",
+			"items":      items,
+		})
+	})
+	mux.HandleFunc("/memory/files/", func(w http.ResponseWriter, r *http.Request) {
+		if !checkAuth(r, authToken) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		paths := resolveRuntimeStatePaths()
+		rawID := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/memory/files/"))
+		spec, ok := resolveMemoryFileSpec(paths.memoryDir, rawID)
+		if !ok {
+			http.Error(w, "invalid file id", http.StatusBadRequest)
+			return
+		}
+		handleMemoryFileDetail(w, r, spec)
 	})
 
 	mux.HandleFunc("/audit/files", func(w http.ResponseWriter, r *http.Request) {
@@ -610,6 +654,7 @@ func buildVersion() string {
 type runtimeStatePaths struct {
 	stateDir         string
 	cacheDir         string
+	memoryDir        string
 	contactsDir      string
 	contactsActive   string
 	contactsInactive string
@@ -628,6 +673,7 @@ func resolveRuntimeStatePaths() runtimeStatePaths {
 	return runtimeStatePaths{
 		stateDir:         stateDir,
 		cacheDir:         cacheDir,
+		memoryDir:        statepaths.MemoryDir(),
 		contactsDir:      contactsDir,
 		contactsActive:   filepath.Join(contactsDir, "ACTIVE.md"),
 		contactsInactive: filepath.Join(contactsDir, "INACTIVE.md"),
@@ -662,6 +708,18 @@ type stateFileSpec struct {
 	Name  string
 	Group string
 	Path  string
+}
+
+type memoryFileSpec struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Group     string `json:"group"`
+	Date      string `json:"date,omitempty"`
+	SessionID string `json:"session_id,omitempty"`
+	Path      string `json:"path"`
+	Exists    bool   `json:"exists"`
+	SizeBytes int64  `json:"size_bytes"`
+	ModTime   string `json:"mod_time,omitempty"`
 }
 
 func runtimeStateFileSpecs(paths runtimeStatePaths) []stateFileSpec {
@@ -709,6 +767,180 @@ func resolveStateFileSpec(paths runtimeStatePaths, group string, name string) (s
 	return stateFileSpec{}, false
 }
 
+func listMemoryFiles(memoryDir string) ([]memoryFileSpec, error) {
+	memoryDir = strings.TrimSpace(memoryDir)
+	if memoryDir == "" {
+		return []memoryFileSpec{}, nil
+	}
+
+	items := make([]memoryFileSpec, 0, 16)
+	if indexSpec, ok := resolveMemoryFileSpec(memoryDir, "index.md"); ok {
+		items = append(items, describeMemoryFile(indexSpec))
+	}
+
+	entries, err := os.ReadDir(memoryDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return items, nil
+		}
+		return nil, err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		day := strings.TrimSpace(entry.Name())
+		if !isValidMemoryDay(day) {
+			continue
+		}
+		dayDir := filepath.Join(memoryDir, day)
+		dayEntries, err := os.ReadDir(dayDir)
+		if err != nil {
+			return nil, err
+		}
+		for _, dayEntry := range dayEntries {
+			if dayEntry.IsDir() {
+				continue
+			}
+			filename := strings.TrimSpace(dayEntry.Name())
+			if !isValidMemoryFilename(filename) {
+				continue
+			}
+			id := filepath.ToSlash(filepath.Join(day, filename))
+			spec, ok := resolveMemoryFileSpec(memoryDir, id)
+			if !ok {
+				continue
+			}
+			items = append(items, describeMemoryFile(spec))
+		}
+	}
+
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].Group != items[j].Group {
+			return items[i].Group == "long_term"
+		}
+		if items[i].Date != items[j].Date {
+			return items[i].Date > items[j].Date
+		}
+		return strings.ToLower(items[i].Name) < strings.ToLower(items[j].Name)
+	})
+	return items, nil
+}
+
+func resolveMemoryFileSpec(memoryDir string, rawID string) (memoryFileSpec, bool) {
+	info, ok := parseMemoryFileID(rawID)
+	if !ok {
+		return memoryFileSpec{}, false
+	}
+	memoryDir = strings.TrimSpace(memoryDir)
+	if memoryDir == "" {
+		return memoryFileSpec{}, false
+	}
+
+	base := filepath.Clean(memoryDir)
+	abs := filepath.Clean(filepath.Join(base, filepath.FromSlash(info.ID)))
+	if abs != base && !strings.HasPrefix(abs, base+string(os.PathSeparator)) {
+		return memoryFileSpec{}, false
+	}
+	return memoryFileSpec{
+		ID:        info.ID,
+		Name:      info.Name,
+		Group:     info.Group,
+		Date:      info.Date,
+		SessionID: info.SessionID,
+		Path:      abs,
+	}, true
+}
+
+func describeMemoryFile(spec memoryFileSpec) memoryFileSpec {
+	fi, err := os.Stat(spec.Path)
+	if err != nil {
+		spec.Exists = false
+		spec.SizeBytes = 0
+		spec.ModTime = ""
+		return spec
+	}
+	spec.Exists = true
+	spec.SizeBytes = fi.Size()
+	spec.ModTime = fi.ModTime().UTC().Format(time.RFC3339)
+	return spec
+}
+
+type parsedMemoryFileID struct {
+	ID        string
+	Name      string
+	Group     string
+	Date      string
+	SessionID string
+}
+
+func parseMemoryFileID(rawID string) (parsedMemoryFileID, bool) {
+	rawID = strings.TrimSpace(rawID)
+	if rawID == "" {
+		return parsedMemoryFileID{}, false
+	}
+	decoded, err := url.PathUnescape(rawID)
+	if err != nil {
+		return parsedMemoryFileID{}, false
+	}
+	decoded = strings.TrimSpace(strings.ReplaceAll(decoded, "\\", "/"))
+	if decoded == "" {
+		return parsedMemoryFileID{}, false
+	}
+	for _, part := range strings.Split(decoded, "/") {
+		if strings.TrimSpace(part) == ".." {
+			return parsedMemoryFileID{}, false
+		}
+	}
+	clean := strings.TrimPrefix(path.Clean("/"+decoded), "/")
+	if clean == "." || clean == "" {
+		return parsedMemoryFileID{}, false
+	}
+	if clean == "index.md" {
+		return parsedMemoryFileID{
+			ID:    "index.md",
+			Name:  "index.md",
+			Group: "long_term",
+		}, true
+	}
+
+	parts := strings.Split(clean, "/")
+	if len(parts) != 2 {
+		return parsedMemoryFileID{}, false
+	}
+	day := strings.TrimSpace(parts[0])
+	filename := strings.TrimSpace(parts[1])
+	if !isValidMemoryDay(day) || !isValidMemoryFilename(filename) {
+		return parsedMemoryFileID{}, false
+	}
+
+	sessionID := strings.TrimSpace(strings.TrimSuffix(filename, ".md"))
+	if sessionID == "" {
+		return parsedMemoryFileID{}, false
+	}
+	return parsedMemoryFileID{
+		ID:        day + "/" + filename,
+		Name:      filename,
+		Group:     "short_term",
+		Date:      day,
+		SessionID: sessionID,
+	}, true
+}
+
+func isValidMemoryDay(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if !memoryDayPattern.MatchString(raw) {
+		return false
+	}
+	_, err := time.Parse("2006-01-02", raw)
+	return err == nil
+}
+
+func isValidMemoryFilename(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	return memoryFilenamePattern.MatchString(raw)
+}
+
 func handleTextFileDetail(w http.ResponseWriter, r *http.Request, name, filePath string) {
 	switch r.Method {
 	case http.MethodGet:
@@ -748,6 +980,70 @@ func handleTextFileDetail(w http.ResponseWriter, r *http.Request, name, filePath
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"ok":   true,
 			"name": name,
+		})
+		return
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+}
+
+func handleMemoryFileDetail(w http.ResponseWriter, r *http.Request, spec memoryFileSpec) {
+	switch r.Method {
+	case http.MethodGet:
+		content, exists, err := fsstore.ReadText(spec.Path)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if !exists {
+			http.Error(w, "file not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":         spec.ID,
+			"name":       spec.Name,
+			"group":      spec.Group,
+			"date":       spec.Date,
+			"session_id": spec.SessionID,
+			"content":    content,
+		})
+		return
+
+	case http.MethodPut:
+		if spec.Group == "short_term" {
+			_, exists, err := fsstore.ReadText(spec.Path)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if !exists {
+				http.Error(w, "file not found", http.StatusNotFound)
+				return
+			}
+		}
+		var req struct {
+			Content string `json:"content"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 4<<20)).Decode(&req); err != nil {
+			http.Error(w, "invalid json", http.StatusBadRequest)
+			return
+		}
+		if err := fsstore.EnsureDir(filepath.Dir(spec.Path), 0o700); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if err := fsstore.WriteTextAtomic(spec.Path, req.Content, fsstore.FileOptions{}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":   true,
+			"id":   spec.ID,
+			"name": spec.Name,
 		})
 		return
 

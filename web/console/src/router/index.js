@@ -5,6 +5,7 @@ import {
   AuditView,
   DashboardView,
   LoginView,
+  MemoryView,
   OverviewView,
   SettingsView,
   StateFilesView,
@@ -19,6 +20,7 @@ const routes = [
   { path: "/tasks", component: TasksView },
   { path: "/tasks/:id", component: TaskDetailView },
   { path: "/audit", component: AuditView },
+  { path: "/memory", component: MemoryView },
   { path: "/files", component: StateFilesView },
   { path: "/settings", component: SettingsView },
   { path: "/", redirect: "/overview" },
@@ -33,6 +35,7 @@ const NAV_ITEMS_META = [
   { id: "/dashboard", titleKey: "nav_runtime", icon: "QIconSpeedoMeter" },
   { id: "/tasks", titleKey: "nav_tasks", icon: "QIconInbox" },
   { id: "/audit", titleKey: "nav_audit", icon: "QIconFingerprint" },
+  { id: "/memory", titleKey: "nav_memory", icon: "QIconBookOpen" },
   { id: "/files", titleKey: "nav_files", icon: "QIconBookOpen" },
   { id: "/settings", titleKey: "nav_settings", icon: "QIconSettings" },
 ];
