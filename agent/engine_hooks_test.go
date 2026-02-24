@@ -443,7 +443,7 @@ func TestFallbackFinal_UsedOnForceConclusionLLMError(t *testing.T) {
 }
 
 func TestFallbackFinal_DefaultWhenNotSet(t *testing.T) {
-	// Without fallbackFinal, forceConclusion should return default "insufficient_evidence"
+	// Without fallbackFinal, forceConclusion should return the built-in fallback output.
 	client := newMockClient(
 		llm.Result{Text: "not json"},
 		// forceConclusion: no response → error → default fallback
@@ -457,8 +457,9 @@ func TestFallbackFinal_DefaultWhenNotSet(t *testing.T) {
 	if f == nil {
 		t.Fatal("expected non-nil Final")
 	}
-	if f.Output != "insufficient_evidence" {
-		t.Errorf("expected default fallback output='insufficient_evidence', got %v", f.Output)
+	expected := buildForceConclusionFallbackOutput(0, forceConclusionReasonModelCallFailed)
+	if f.Output != expected {
+		t.Errorf("expected default fallback output=%q, got %v", expected, f.Output)
 	}
 }
 

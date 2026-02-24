@@ -2,17 +2,52 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 
 	"github.com/quailyquaily/mistermorph/llm"
 )
 
+const (
+	forceConclusionFallbackOutputTemplate = "I made it through %d steps, then got stuck while wrapping up: %s. pfft pfft pfft, pff pff pff."
+	forceConclusionReasonModelCallFailed  = "the model request ffffffailed, wwwtttfffff."
+	forceConclusionReasonFinalFormat      = "the final answer format was iiiinvalid. cooommonn, you can do itttt."
+	forceConclusionReasonTypeTemplate     = "the model returned %q instead of a final answer, wwwtttfffff."
+)
+
+func buildForceConclusionFallbackOutput(stepCount int, reason string) string {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "an unknown issue came up"
+	}
+	return fmt.Sprintf(forceConclusionFallbackOutputTemplate, stepCount, reason)
+}
+
+func summarizeForceConclusionModelError(err error) string {
+	if err == nil {
+		return forceConclusionReasonModelCallFailed
+	}
+
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	switch {
+	case strings.Contains(msg, "timeout"), strings.Contains(msg, "deadline exceeded"):
+		return "the model request timed out"
+	case strings.Contains(msg, "rate limit"), strings.Contains(msg, "too many requests"), strings.Contains(msg, "429"):
+		return "the model request was rate-limited"
+	case strings.Contains(msg, "network"), strings.Contains(msg, "connection"), strings.Contains(msg, "dial"), strings.Contains(msg, "refused"), strings.Contains(msg, "reset"):
+		return "there was a network issue reaching the model"
+	default:
+		return forceConclusionReasonModelCallFailed
+	}
+}
+
 func (e *Engine) forceConclusion(ctx context.Context, messages []llm.Message, model string, agentCtx *Context, extraParams map[string]any, log *slog.Logger) (*Final, *Context, error) {
 	if log == nil {
 		log = e.log.With("model", model)
 	}
-	log.Warn("force_conclusion", "steps", len(agentCtx.Steps), "messages", len(messages))
+	steps := len(agentCtx.Steps)
+	log.Warn("force_conclusion", "steps", steps, "messages", len(messages))
 	messages = append(messages, llm.Message{
 		Role:    "user",
 		Content: "You have reached the maximum number of steps or token budget. Provide your final output NOW as a JSON final response.",
@@ -29,7 +64,10 @@ func (e *Engine) forceConclusion(ctx context.Context, messages []llm.Message, mo
 		if e.fallbackFinal != nil {
 			return e.fallbackFinal(), agentCtx, nil
 		}
-		return &Final{Output: "insufficient_evidence", Plan: agentCtx.Plan}, agentCtx, nil
+		return &Final{
+			Output: buildForceConclusionFallbackOutput(steps, summarizeForceConclusionModelError(err)),
+			Plan:   agentCtx.Plan,
+		}, agentCtx, nil
 	}
 	agentCtx.AddUsage(result.Usage, result.Duration)
 
@@ -39,14 +77,20 @@ func (e *Engine) forceConclusion(ctx context.Context, messages []llm.Message, mo
 		if e.fallbackFinal != nil {
 			return e.fallbackFinal(), agentCtx, nil
 		}
-		return &Final{Output: "insufficient_evidence", Plan: agentCtx.Plan}, agentCtx, nil
+		return &Final{
+			Output: buildForceConclusionFallbackOutput(steps, forceConclusionReasonFinalFormat),
+			Plan:   agentCtx.Plan,
+		}, agentCtx, nil
 	}
 	if resp.Type != TypeFinal && resp.Type != TypeFinalAnswer {
 		log.Warn("force_conclusion_invalid_type", "type", resp.Type)
 		if e.fallbackFinal != nil {
 			return e.fallbackFinal(), agentCtx, nil
 		}
-		return &Final{Output: "insufficient_evidence", Plan: agentCtx.Plan}, agentCtx, nil
+		return &Final{
+			Output: buildForceConclusionFallbackOutput(steps, fmt.Sprintf(forceConclusionReasonTypeTemplate, resp.Type)),
+			Plan:   agentCtx.Plan,
+		}, agentCtx, nil
 	}
 	agentCtx.RawFinalAnswer = resp.RawFinalAnswer
 	log.Info("force_conclusion_final")
