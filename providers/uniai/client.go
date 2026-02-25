@@ -41,6 +41,7 @@ type Config struct {
 
 type Client struct {
 	provider           string
+	model              string
 	requestTimeout     time.Duration
 	toolsEmulationMode uniaiapi.ToolsEmulationMode
 	client             *uniaiapi.Client
@@ -88,6 +89,7 @@ func New(cfg Config) *Client {
 
 	return &Client{
 		provider:           provider,
+		model:              strings.TrimSpace(cfg.Model),
 		requestTimeout:     cfg.RequestTimeout,
 		toolsEmulationMode: normalizeToolsEmulationMode(cfg.ToolsEmulationMode),
 		client:             uniaiapi.New(uCfg),
@@ -124,7 +126,8 @@ func (c *Client) Chat(ctx context.Context, req llm.Request) (llm.Result, error) 
 	}
 
 	toolCalls := toLLMToolCalls(resp.ToolCalls)
-	if strings.EqualFold(strings.TrimSpace(c.provider), "gemini") {
+	model := firstNonEmpty(req.Model, c.model)
+	if shouldEnsureGeminiThoughtSignature(c.provider, model) {
 		toolCalls = ensureGeminiToolCallThoughtSignatures(toolCalls)
 	}
 
@@ -138,6 +141,18 @@ func (c *Client) Chat(ctx context.Context, req llm.Request) (llm.Result, error) 
 		},
 		Duration: time.Since(start),
 	}, nil
+}
+
+func isGeminiModel(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if model == "" {
+		return false
+	}
+	return strings.Contains(model, "gemini")
+}
+
+func shouldEnsureGeminiThoughtSignature(provider, model string) bool {
+	return strings.EqualFold(strings.TrimSpace(provider), "gemini") || isGeminiModel(model)
 }
 
 func buildChatOptions(req llm.Request, provider string, forceJSON bool, toolsEmulationMode uniaiapi.ToolsEmulationMode, debugFn func(label, payload string)) []uniaiapi.ChatOption {

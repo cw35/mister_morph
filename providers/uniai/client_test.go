@@ -155,3 +155,81 @@ func TestEnsureGeminiToolCallThoughtSignaturesSynthesize(t *testing.T) {
 		t.Fatalf("expected deterministic synthesized signature, got %q vs %q", out1[0].ThoughtSignature, out2[0].ThoughtSignature)
 	}
 }
+
+func TestIsGeminiModel(t *testing.T) {
+	tests := []struct {
+		name  string
+		model string
+		want  bool
+	}{
+		{
+			name:  "plain gemini",
+			model: "gemini-2.0-flash",
+			want:  true,
+		},
+		{
+			name:  "prefixed carrot gemini",
+			model: "carrot/gemini-3-pro",
+			want:  true,
+		},
+		{
+			name:  "google gemini path",
+			model: "google/gemini-3-flash-preview",
+			want:  true,
+		},
+		{
+			name:  "non gemini",
+			model: "gpt-5.2",
+			want:  false,
+		},
+		{
+			name:  "empty",
+			model: "",
+			want:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isGeminiModel(tt.model); got != tt.want {
+				t.Fatalf("isGeminiModel(%q) = %v, want %v", tt.model, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestShouldEnsureGeminiThoughtSignature(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider string
+		model    string
+		want     bool
+	}{
+		{
+			name:     "provider gemini with non gemini model",
+			provider: "gemini",
+			model:    "gpt-5.2",
+			want:     true,
+		},
+		{
+			name:     "non gemini provider with gemini model",
+			provider: "openai",
+			model:    "carrot/gemini-3-pro",
+			want:     true,
+		},
+		{
+			name:     "non gemini provider and model",
+			provider: "openai",
+			model:    "gpt-5.2",
+			want:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldEnsureGeminiThoughtSignature(tt.provider, tt.model); got != tt.want {
+				t.Fatalf("shouldEnsureGeminiThoughtSignature(%q, %q) = %v, want %v", tt.provider, tt.model, got, tt.want)
+			}
+		})
+	}
+}
